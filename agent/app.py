@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks
 from slack_bolt.adapter.fastapi import SlackRequestHandler
 from slack_bolt import App
 from dotenv import load_dotenv
+import logging
 
 try:
     from agent.rutoagent import chat
@@ -159,9 +160,27 @@ def handle_message_events(event, client, logger):
 api = FastAPI(title="RutoBot API")
 handler = SlackRequestHandler(app)
 
+logging.basicConfig(level=logging.INFO)
+
 @api.post("/slack/events")
 async def endpoint(request: Request, background_tasks: BackgroundTasks):
-    return await handler.handle(request, background_tasks)
+    logging.info("Received request on /slack/events")
+    try:
+        # Read request body for logging purposes
+        body = await request.body()
+        logging.info(f"Request body: {body.decode()}")
+        # Re-create the request object as reading the body consumes it
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+        request = Request(request.scope, receive=receive)
+        
+        logging.info("Handling request with SlackRequestHandler...")
+        response = await handler.handle(request, background_tasks)
+        logging.info("Request handled successfully by SlackRequestHandler.")
+        return response
+    except Exception as e:
+        logging.exception("Error handling /slack/events request")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @api.get("/health")
 def health_check():
