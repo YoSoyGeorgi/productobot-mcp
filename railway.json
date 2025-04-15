@@ -5,6 +5,10 @@
   "deploy": {
     "startCommand": "sh start.sh",
     "healthcheckPath": "/health",
-    "healthcheckTimeout": 300
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "on-failure"
+  },
+  "variables": {
+    "PORT": "8000"
   }
 } 
