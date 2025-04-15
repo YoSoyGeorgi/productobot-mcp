@@ -3,7 +3,12 @@ from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks
 from slack_bolt.adapter.fastapi import SlackRequestHandler
 from slack_bolt import App
 from dotenv import load_dotenv
-from agent.rutoagent import chat
+
+try:
+    from agent.rutoagent import chat
+except ImportError:
+    # Fallback for direct import when running from the agent directory
+    from rutoagent import chat
 
 # Load environment variables
 load_dotenv()
