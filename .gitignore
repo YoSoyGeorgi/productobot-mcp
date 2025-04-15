@@ -1,6 +1,7 @@
 # Environment variables
 .env
 env_ruto
+rutopia_env
 # Python
 __pycache__/
 *.py[cod]

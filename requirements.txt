@@ -1,6 +1,6 @@
-openai==1.18.0
-python-dotenv==1.0.0
-slack-bolt==1.18.0
-fastapi==0.104.1
-uvicorn==0.23.2
+openai==1.74.0
+python-dotenv==1.1.0
+slack-bolt==1.23.0
+fastapi==0.115.12
+uvicorn==0.34.1
 gunicorn==21.2.0 
