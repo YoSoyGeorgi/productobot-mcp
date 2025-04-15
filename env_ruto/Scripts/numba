@@ -1,8 +1,0 @@
-#!C:\Users\omard\OneDrive\02_EMPRESAS\08_Polímata.AI\02_clientes\Rutopia\env_ruto\Scripts\python.exe
-# -*- coding: UTF-8 -*-
-from __future__ import print_function, division, absolute_import
-
-from numba.misc.numba_entry import main
-
-if __name__ == "__main__":
-    main()
