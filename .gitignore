@@ -37,8 +37,7 @@ var/
 # PyCharm
 .idea/
 
-# Large files
-*.json
+
 files/
 
 # OS generated files
