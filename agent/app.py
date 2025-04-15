@@ -175,7 +175,7 @@ async def endpoint(request: Request, background_tasks: BackgroundTasks):
         request = Request(request.scope, receive=receive)
         
         logging.info("Handling request with SlackRequestHandler...")
-        response = await handler.handle(request, background_tasks)
+        response = await handler.handle(request)
         logging.info("Request handled successfully by SlackRequestHandler.")
         return response
     except Exception as e:
