@@ -1,5 +1,7 @@
 # Environment variables
 .env
+DEPLOYMENT.md
+Dockerfile
 env_ruto
 rutopia_env
 # Python
