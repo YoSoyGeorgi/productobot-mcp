@@ -4,7 +4,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize OpenAI client with only the API key, no additional parameters
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 # Dictionary to store conversation history by channel_thread_id
 conversation_history = {}
