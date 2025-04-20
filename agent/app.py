@@ -171,7 +171,7 @@ def handle_message_events(event, client, logger):
     
     # Process the message with the chat function
     response = sync_chat(
-        chatbot_status="off",
+        chatbot_status="on",
         query=event['text'],
         channel_id=event['channel'],
         thread_ts=thread_ts,

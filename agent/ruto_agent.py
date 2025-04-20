@@ -264,7 +264,7 @@ class SlackMessageFormatter:
     def format_response(response, context):
         # Add disclaimer for first interaction if chatbot is off
         if context.is_first_interaction and context.chatbot_status != "on":
-            return "Hola 👋, soy RutoBot 🤖, estoy en desarrollo, por lo pronto no estoy conectado a la base de conocimiento de Rutopía\n\n" + response
+            return "Hola 👋, soy RutoBot 🤖, estoy en desarrollo pero me puedes preguntar sobre viajes, destinos, alojamientos o experiencias" + response
         return response
 
 async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on", first_name="Usuario"):
