@@ -10,3 +10,4 @@ numpy==1.26.4
 pandas==2.2.1
 nest-asyncio==1.6.0
 pydantic==2.6.3 
+openai-agents
