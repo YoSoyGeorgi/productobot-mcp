@@ -3,4 +3,10 @@ python-dotenv==1.1.0
 slack-bolt==1.23.0
 fastapi==0.115.12
 uvicorn==0.34.1
-gunicorn==21.2.0 
+gunicorn==21.2.0
+supabase==2.3.0
+requests==2.31.0
+numpy==1.26.4
+pandas==2.2.1
+nest-asyncio==1.6.0
+pydantic==2.6.3 

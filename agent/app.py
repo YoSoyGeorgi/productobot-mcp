@@ -20,6 +20,21 @@ app = App(
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 
+# Helper function to get user info
+def get_user_info(client, user_id):
+    try:
+        result = client.users_info(user=user_id)
+        user_info = result["user"]
+        return {
+            "id": user_id,
+            "name": user_info.get("name"),
+            "real_name": user_info.get("real_name"),
+            "display_name": user_info.get("profile", {}).get("display_name")
+        }
+    except Exception as e:
+        logging.error(f"Error fetching user info: {e}")
+        return {"id": user_id}
+
 # Event handlers
 @app.event("app_mention")
 def handle_app_mention(event, client, say):
@@ -29,6 +44,10 @@ def handle_app_mention(event, client, say):
         name='eyes'
     )
     
+    # Get user info
+    user_id = event.get("user")
+    user_info = get_user_info(client, user_id)
+    
     # Get thread timestamp - use message ts as thread ts if it's the start of a thread
     thread_ts = event.get('thread_ts', event['ts'])
     
@@ -37,7 +56,8 @@ def handle_app_mention(event, client, say):
         chatbot_status="on",
         query=event['text'],
         channel_id=event['channel'],
-        thread_ts=thread_ts
+        thread_ts=thread_ts,
+        user_info=user_info  # Pass user info to the chat function
     )
 
     # Send the response - mrkdwn is the default, so we don't need to specify it
@@ -57,6 +77,10 @@ def handle_app_mention(event, client, say):
 def handle_app_home_opened_events(event, client, logger):
     user_id = event["user"]
     
+    # Get user info
+    user_info = get_user_info(client, user_id)
+    user_name = user_info.get("real_name") or user_info.get("name") or f"<@{user_id}>"
+    
     # Publish Home tab view
     client.views_publish(
         user_id=user_id,
@@ -67,7 +91,7 @@ def handle_app_home_opened_events(event, client, logger):
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": "Bienvenido a RutoBot 👋",
+                        "text": f"Bienvenido a RutoBot, {user_name} 👋",
                         "emoji": True
                     }
                 },
@@ -124,6 +148,10 @@ def handle_message_events(event, client, logger):
     if channel_type != "im" and not event.get("thread_ts"):
         return
 
+    # Get user info
+    user_id = event.get("user")
+    user_info = get_user_info(client, user_id)
+    
     # Get thread timestamp - use message ts as thread ts if it's the start of a thread
     thread_ts = event.get('thread_ts', event['ts'])
     
@@ -139,7 +167,8 @@ def handle_message_events(event, client, logger):
         chatbot_status="off",
         query=event['text'],
         channel_id=event['channel'],
-        thread_ts=thread_ts
+        thread_ts=thread_ts,
+        user_info=user_info  # Pass user info to the chat function
     )
 
     # Send the response

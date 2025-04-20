@@ -1,5 +1,7 @@
 # Environment variables
 .env
+embedding/
+testing/
 DEPLOYMENT.md
 Dockerfile
 env_ruto
