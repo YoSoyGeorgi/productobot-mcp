@@ -5,6 +5,7 @@ from slack_bolt import App
 from dotenv import load_dotenv
 import logging
 import sys
+import asyncio
 from pathlib import Path
 
 # Add the current directory to sys.path
@@ -37,6 +38,10 @@ def get_user_info(client, user_id):
         logging.error(f"Error fetching user info: {e}")
         return {"id": user_id}
 
+# Synchronous wrapper for the async chat function
+def sync_chat(**kwargs):
+    return asyncio.run(chat(**kwargs))
+
 # Event handlers
 @app.event("app_mention")
 def handle_app_mention(event, client, say):
@@ -54,7 +59,7 @@ def handle_app_mention(event, client, say):
     thread_ts = event.get('thread_ts', event['ts'])
     
     # Pass channel and thread info to maintain conversation context
-    response = chat(
+    response = sync_chat(
         chatbot_status="on",
         query=event['text'],
         channel_id=event['channel'],
@@ -165,7 +170,7 @@ def handle_message_events(event, client, logger):
     )
     
     # Process the message with the chat function
-    response = chat(
+    response = sync_chat(
         chatbot_status="off",
         query=event['text'],
         channel_id=event['channel'],
