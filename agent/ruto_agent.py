@@ -4,9 +4,9 @@ from agents import Agent, GuardrailFunctionOutput, HandoffOutputItem, ItemHelper
 from agents.exceptions import InputGuardrailTripwireTriggered
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
-from tools.RAG import process_user_query
 from typing import Optional, Dict, Any, Callable
 import logging
+import traceback
 
 # Set up logging
 logging.basicConfig(
@@ -14,6 +14,25 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Flag to track initialization status
+agents_initialized = False
+
+try:
+    from tools.RAG import process_user_query
+    logger.info("Successfully imported RAG tools")
+except ImportError as e:
+    logger.error(f"Failed to import RAG tools: {str(e)}")
+    logger.error(traceback.format_exc())
+    
+    # Create a mock process_user_query function
+    def process_user_query(query, query_type):
+        logger.warning(f"Using mock process_user_query for {query_type}: {query}")
+        return (
+            "No narrative available",
+            [],
+            f"Lo siento, no puedo procesar esta consulta sobre {query_type} en este momento."
+        )
 
 class UserInfoContext(BaseModel):
     first_name: str | None = None
@@ -50,12 +69,20 @@ Always use this Slack-specific markdown formatting in your responses.
 async def trip_planning_guardrail( 
     ctx: RunContextWrapper[UserInfoContext], agent: Agent, input: str | list[TResponseInputItem]
 ) -> GuardrailFunctionOutput:
-    result = await Runner.run(guardrail_agent, input, context=ctx.context)
-
-    return GuardrailFunctionOutput(
-        output_info=result.final_output, 
-        tripwire_triggered=not result.final_output.is_trip_planning,
-    )
+    try:
+        result = await Runner.run(guardrail_agent, input, context=ctx.context)
+        return GuardrailFunctionOutput(
+            output_info=result.final_output, 
+            tripwire_triggered=not result.final_output.is_trip_planning,
+        )
+    except Exception as e:
+        logger.error(f"Error in trip_planning_guardrail: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Default to letting the message through if there's an error
+        return GuardrailFunctionOutput(
+            output_info=TripPlanningGuardrailOutput(is_trip_planning=True, reasoning="Error in guardrail, defaulting to allow"), 
+            tripwire_triggered=False,
+        )
 
 @function_tool
 async def get_city_weather(contextWrapper: RunContextWrapper[UserInfoContext], city: str) -> str:
@@ -65,9 +92,12 @@ async def get_city_weather(contextWrapper: RunContextWrapper[UserInfoContext], c
     Returns:
         The weather in the city.
     """
-
-    contextWrapper.context.city = city
-    return f"The weather in {city} is sunny {contextWrapper.context.first_name}."
+    try:
+        contextWrapper.context.city = city
+        return f"The weather in {city} is sunny {contextWrapper.context.first_name}."
+    except Exception as e:
+        logger.error(f"Error in get_city_weather: {str(e)}")
+        return f"Lo siento, no puedo obtener el clima para {city} en este momento."
 
 @function_tool
 async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
@@ -77,10 +107,14 @@ async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], us
     Returns:
         The experiences from the knowledge base.
     """
-    structured_narrative, search_results, formatted_results = process_user_query(user_query, "experiences")
-
-    contextWrapper.context.user_query = user_query
-    return formatted_results
+    try:
+        structured_narrative, search_results, formatted_results = process_user_query(user_query, "experiences")
+        contextWrapper.context.user_query = user_query
+        return formatted_results
+    except Exception as e:
+        logger.error(f"Error in get_experiences: {str(e)}")
+        logger.error(traceback.format_exc())
+        return "Lo siento, no puedo encontrar experiencias relacionadas en este momento."
 
 @function_tool
 async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
@@ -90,10 +124,14 @@ async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], user_q
     Returns:
         The lodging from the knowledge base.
     """
-    structured_narrative, search_results, formatted_results = process_user_query(user_query, "lodging")
-
-    contextWrapper.context.user_query = user_query
-    return formatted_results
+    try:
+        structured_narrative, search_results, formatted_results = process_user_query(user_query, "lodging")
+        contextWrapper.context.user_query = user_query
+        return formatted_results
+    except Exception as e:
+        logger.error(f"Error in get_lodging: {str(e)}")
+        logger.error(traceback.format_exc())
+        return "Lo siento, no puedo encontrar hospedajes relacionados en este momento."
 
 @function_tool
 async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
@@ -103,156 +141,187 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     Returns:
         The transportation from the knowledge base.
     """
-    structured_narrative, search_results, formatted_results = process_user_query(user_query, "transport")
+    try:
+        structured_narrative, search_results, formatted_results = process_user_query(user_query, "transport")
+        contextWrapper.context.user_query = user_query
+        return formatted_results
+    except Exception as e:
+        logger.error(f"Error in get_transportation: {str(e)}")
+        logger.error(traceback.format_exc())
+        return "Lo siento, no puedo encontrar opciones de transporte relacionadas en este momento."
 
-    contextWrapper.context.user_query = user_query
-    return formatted_results
+# Initialize agents
+try:
+    logger.info("Initializing agents")
+    
+    guardrail_agent = Agent( 
+        name="Guardrail check",
+        instructions="Check if the user is asking you a request that is related to trip planning.",
+        output_type=TripPlanningGuardrailOutput,
+    )
+    logger.info("Guardrail agent initialized")
 
+    city_info_agent = Agent[UserInfoContext](
+        name="City Info Agent",
+        handoff_description="A helpful agent that can answer questions about a city not related to experiences, hotels, or transportation.",
+        instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
+        {SLACK_FORMATTING}
+        You are a city info agent. If you are speaking to a customer, you probably were transferred to from the triage agent.
+        Use the following routine to support the customer.
+        # Routine
+        1. Ask for the city name if not clear from the context.
+        2. Use the web search tool to get information about restaurants in the city.
+        3. Use the weather tool to get the live weather in the city, use your knowledge for climate questions.
+        4. If the customer asks a question that is not related to the routine, transfer back to the triage agent. """,
+        model="gpt-4o-mini",
+        tools=[WebSearchTool(), get_city_weather]
+    )
+    logger.info("City info agent initialized")
 
-guardrail_agent = Agent( 
-    name="Guardrail check",
-    instructions="Check if the user is asking you a request that is related to trip planning.",
-    output_type=TripPlanningGuardrailOutput,
-)
+    experiences_agent = Agent[UserInfoContext](
+        name="Experiences Agent",
+        handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about experiences from the knowledge base.",
+        instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
+        {SLACK_FORMATTING}
+        You are a experiences agent. If you are speaking to a employee of Rutopía the travel agency, you probably were transferred to from the triage agent.
+        Use the following routine to support the employee.
+        # Routine
+        1. Ask for the type of experience the employee is looking for.
+        2. Use the get_experiences tool to get information about experiences related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-city_info_agent = Agent[UserInfoContext](
-    name="City Info Agent",
-    handoff_description="A helpful agent that can answer questions about a city not related to experiences, hotels, or transportation.",
-    instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
-    {SLACK_FORMATTING}
-    You are a city info agent. If you are speaking to a customer, you probably were transferred to from the triage agent.
-    Use the following routine to support the customer.
-    # Routine
-    1. Ask for the city name if not clear from the context.
-    2. Use the web search tool to get information about restaurants in the city.
-    3. Use the weather tool to get the live weather in the city, use your knowledge for climate questions.
-    4. If the customer asks a question that is not related to the routine, transfer back to the triage agent. """,
-    model="gpt-4o-mini",
-    tools=[WebSearchTool(), get_city_weather]
-)
+            🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
+            📍 *Isla Holbox* | 🧭 *Operadora local* | 🕒 *Tour de 2 horas antes de medianoche*
 
-experiences_agent = Agent[UserInfoContext](
-    name="Experiences Agent",
-    handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about experiences from the knowledge base.",
-    instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
-    {SLACK_FORMATTING}
-    You are a experiences agent. If you are speaking to a employee of Rutopía the travel agency, you probably were transferred to from the triage agent.
-    Use the following routine to support the employee.
-    # Routine
-    1. Ask for the type of experience the employee is looking for.
-    2. Use the get_experiences tool to get information about experiences related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
+            Rema lejos de las luces del pueblo y sumérgete en el cielo estrellado de Holbox. Este tour guiado te permite observar constelaciones, disfrutar de aguas bioluminiscentes y nadar bajo las estrellas. No se requiere experiencia previa, solo ganas de vivir algo mágico.
 
-        🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
-        📍 *Isla Holbox* | 🧭 *Operadora local* | 🕒 *Tour de 2 horas antes de medianoche*
+            📍 *Punto de encuentro:* Av Damero, Centro, 77310 Holbox, Q.R.  
+            👤 *Edades:* Solo mayores de 6 años (no se permiten menores)  
+            👥 *Proveedor:* Proveedor A  
+            ✅ *Producto 2025:* Listo  
+            💫 *Tag:* `#nomenoresde6años`
 
-        Rema lejos de las luces del pueblo y sumérgete en el cielo estrellado de Holbox. Este tour guiado te permite observar constelaciones, disfrutar de aguas bioluminiscentes y nadar bajo las estrellas. No se requiere experiencia previa, solo ganas de vivir algo mágico.
+        3. If the information does not answer the employee's query, offer an alternative experience, always say why you are offering an alternative. example:
 
-        📍 *Punto de encuentro:* Av Damero, Centro, 77310 Holbox, Q.R.  
-        👤 *Edades:* Solo mayores de 6 años (no se permiten menores)  
-        👥 *Proveedor:* Proveedor A  
-        ✅ *Producto 2025:* Listo  
-        💫 *Tag:* `#nomenoresde6años`
+            No encontré exactamente lo que buscas, pero si buscas una experiencia de kayak puedes ofrecer la siguiente experiencia:
 
-    3. If the information does not answer the employee's query, offer an alternative experience, always say why you are offering an alternative. example:
+            🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
+            📍 *Isla Holbox* | 🧭 *Operadora local* | 🕒 *Tour de 2 horas antes de medianoche*
 
-        No encontré exactamente lo que buscas, pero si buscas una experiencia de kayak puedes ofrecer la siguiente experiencia:
+            Rema lejos de las luces del pueblo y sumérgete en el cielo estrellado de Holbox. Este tour guiado te permite observar constelaciones, disfrutar de aguas bioluminiscentes y nadar bajo las estrellas. No se requiere experiencia previa, solo ganas de vivir algo mágico.
 
-        🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
-        📍 *Isla Holbox* | 🧭 *Operadora local* | 🕒 *Tour de 2 horas antes de medianoche*
+            📍 *Punto de encuentro:* Av Damero, Centro, 77310 Holbox, Q.R.  
+            👤 *Edades:* Solo mayores de 6 años (no se permiten menores)  
+            👥 *Proveedor:* Proveedor A  
+            ✅ *Producto 2025:* Listo  
+            💫 *Tag:* `#nomenoresde6años`
 
-        Rema lejos de las luces del pueblo y sumérgete en el cielo estrellado de Holbox. Este tour guiado te permite observar constelaciones, disfrutar de aguas bioluminiscentes y nadar bajo las estrellas. No se requiere experiencia previa, solo ganas de vivir algo mágico.
+        4. If the employee asks a question that is not related to the routine, transfer back to the triage agent. 
+        """,
+        model="gpt-4o-mini",
+        tools=[get_experiences]
+    )
+    logger.info("Experiences agent initialized")
 
-        📍 *Punto de encuentro:* Av Damero, Centro, 77310 Holbox, Q.R.  
-        👤 *Edades:* Solo mayores de 6 años (no se permiten menores)  
-        👥 *Proveedor:* Proveedor A  
-        ✅ *Producto 2025:* Listo  
-        💫 *Tag:* `#nomenoresde6años`
+    lodging_agent = Agent[UserInfoContext](
+        name="Lodging Agent",
+        handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about lodging from the knowledge base.",
+        instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
+        {SLACK_FORMATTING}
+        You are a lodging agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
+        Use the following routine to support the employee.
+        # Routine
+        1. Ask for the type of lodging the employee is looking for.
+        2. Use the get_lodging tool to get information about lodging related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-    4. If the employee asks a question that is not related to the routine, transfer back to the triage agent. 
-    """,
-    model="gpt-4o-mini",
-    tools=[get_experiences]
-)
+            🏨 *Hospedaje boutique en Calakmul*  
+            📍 *Calakmul* | 🛏️ *6 habitaciones* | 🍽️ *Incluye desayuno, comida y cena*
 
-lodging_agent = Agent[UserInfoContext](
-    name="Lodging Agent",
-    handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about lodging from the knowledge base.",
-    instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
-    {SLACK_FORMATTING}
-    You are a lodging agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
-    Use the following routine to support the employee.
-    # Routine
-    1. Ask for the type of lodging the employee is looking for.
-    2. Use the get_lodging tool to get information about lodging related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
+            Alojamiento tipo boutique con restaurante, bar, estacionamiento y resguardo de equipaje. Ideal para explorar Calakmul con comodidad y atención personalizada.
 
-        🏨 *Hospedaje boutique en Calakmul*  
-        📍 *Calakmul* | 🛏️ *6 habitaciones* | 🍽️ *Incluye desayuno, comida y cena*
+            📍 *Dirección:* Camino a laguna Carolina km.1, Ejido Valentín Gómez Farías, 24643 Camp.  
+            🌐 *Mapa:* https://maps.app.goo.gl/m532b7PnnBjxFcgj8  
+            ⏱️ *Tiempo de respuesta:* No se aceptan reservas de último minuto  
+            👤 *Edades:* Sin información específica  
+            🍼 *Tag:* `#cuna`
 
-        Alojamiento tipo boutique con restaurante, bar, estacionamiento y resguardo de equipaje. Ideal para explorar Calakmul con comodidad y atención personalizada.
+        3. If the employee asks a question that is not related to the routine, transfer back to the triage agent. """,
+        model="gpt-4o-mini",
+        tools=[get_lodging]
+    )
+    logger.info("Lodging agent initialized")
 
-        📍 *Dirección:* Camino a laguna Carolina km.1, Ejido Valentín Gómez Farías, 24643 Camp.  
-        🌐 *Mapa:* https://maps.app.goo.gl/m532b7PnnBjxFcgj8  
-        ⏱️ *Tiempo de respuesta:* No se aceptan reservas de último minuto  
-        👤 *Edades:* Sin información específica  
-        🍼 *Tag:* `#cuna`
+    transportation_agent = Agent[UserInfoContext](
+        name="Transportation Agent",
+        handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about transportation from the knowledge base.",
+        instructions=f"""
+        {RECOMMENDED_PROMPT_PREFIX}
+        {SLACK_FORMATTING}
+        You are a transportation agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
+        Use the following routine to support the employee.
+        # Routine
+        1. Ask for the type of transportation the employee is looking for.
+        2. Use the get_transportation tool to get information about transportation related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-    3. If the employee asks a question that is not related to the routine, transfer back to the triage agent. """,
-    model="gpt-4o-mini",
-    tools=[get_lodging]
-)
+            🚐 *Transporte privado: Akumal → Isla Holbox*  
+            📍 *Isla Holbox* | 🛥️ *Incluye ferry, taxi y transporte marítimo* | 📅 *Disponible todos los días*
 
-transportation_agent = Agent[UserInfoContext](
-    name="Transportation Agent",
-    handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about transportation from the knowledge base.",
-    instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
-    {SLACK_FORMATTING}
-    You are a transportation agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
-    Use the following routine to support the employee.
-    # Routine
-    1. Ask for the type of transportation the employee is looking for.
-    2. Use the get_transportation tool to get information about transportation related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
+            Traslado privado desde Akumal hasta Isla Holbox, con todos los medios incluidos: transporte terrestre, tickets de ferry y taxi local para llegar a tu destino sin complicaciones.
 
-        🚐 *Transporte privado: Akumal → Isla Holbox*  
-        📍 *Isla Holbox* | 🛥️ *Incluye ferry, taxi y transporte marítimo* | 📅 *Disponible todos los días*
+            📍 *Dirección:* Holbox, Quintana Roo, México  
+            🌐 *Mapa:* https://www.google.com/maps/place/El+Holboxe%C3%B1o/@21.5222995,-87.379604,15z/data=!4m2!3m1!1s0x0:0x4507d35ed7b4050f?sa=X&ved=2ahUKEwioiqCgkc6DAxUnj2oFHaCiAjgQ_BJ6BAgJEAA  
+            ⏱️ *Tiempo de respuesta:* Menos de 48 hrs  
+            👤 *Edades:* Sin restricciones
 
-        Traslado privado desde Akumal hasta Isla Holbox, con todos los medios incluidos: transporte terrestre, tickets de ferry y taxi local para llegar a tu destino sin complicaciones.
+        3. If the information does not answer the employee's query, offer an alternative route or transportation.
+        4. If the employee asks a question that is not related to the routine, transfer back to the triage agent.
+        """,
+        model="gpt-4o-mini",
+        tools=[get_transportation]
+    )
+    logger.info("Transportation agent initialized")
 
-        📍 *Dirección:* Holbox, Quintana Roo, México  
-        🌐 *Mapa:* https://www.google.com/maps/place/El+Holboxe%C3%B1o/@21.5222995,-87.379604,15z/data=!4m2!3m1!1s0x0:0x4507d35ed7b4050f?sa=X&ved=2ahUKEwioiqCgkc6DAxUnj2oFHaCiAjgQ_BJ6BAgJEAA  
-        ⏱️ *Tiempo de respuesta:* Menos de 48 hrs  
-        👤 *Edades:* Sin restricciones
+    router_agent = Agent[UserInfoContext](
+        name="Router Agent",
+        input_guardrails=[trip_planning_guardrail],
+        handoff_description="A triage agent that can delegate a customer's request to the appropriate agent.",
+        instructions=(
+            f"{RECOMMENDED_PROMPT_PREFIX}"
+            f"{SLACK_FORMATTING}"
+            "You are a helpful routing agent named RutoBot. You can use your tools to delegate questions to other appropriate agents."
+            "You are friendly, conversational, and helpful."
+        ),
+        handoffs=[
+            experiences_agent,
+            lodging_agent,
+            transportation_agent,
+        ],
+    )
+    logger.info("Router agent initialized")
 
-    3. If the information does not answer the employee's query, offer an alternative route or transportation.
-    4. If the employee asks a question that is not related to the routine, transfer back to the triage agent.
-    """,
-    model="gpt-4o-mini",
-    tools=[get_transportation]
-)
+    experiences_agent.handoffs.append(router_agent)
+    lodging_agent.handoffs.append(router_agent)
+    transportation_agent.handoffs.append(router_agent)
+    
+    # Set initialization flag to true
+    agents_initialized = True
+    logger.info("All agents successfully initialized")
 
-router_agent = Agent[UserInfoContext](
-    name="Router Agent",
-    input_guardrails=[trip_planning_guardrail],
-    handoff_description="A triage agent that can delegate a customer's request to the appropriate agent.",
-    instructions=(
-        f"{RECOMMENDED_PROMPT_PREFIX}"
-        f"{SLACK_FORMATTING}"
-        "You are a helpful routing agent named RutoBot. You can use your tools to delegate questions to other appropriate agents."
-        "You are friendly, conversational, and helpful."
-    ),
-    handoffs=[
-        experiences_agent,
-        lodging_agent,
-        transportation_agent,
-    ],
-)
-
-experiences_agent.handoffs.append(router_agent)
-lodging_agent.handoffs.append(router_agent)
-transportation_agent.handoffs.append(router_agent)
+except Exception as e:
+    logger.critical(f"Error initializing agents: {str(e)}")
+    logger.critical(traceback.format_exc())
+    
+    # Create placeholder agents if initialization fails
+    guardrail_agent = None
+    city_info_agent = None
+    experiences_agent = None
+    lodging_agent = None
+    transportation_agent = None
+    router_agent = None
+    
+    logger.warning("Using placeholder agents due to initialization failure")
 
 # Define custom hooks to show a wait message before tool execution
 class PreToolMessageHook(RunHooks):
@@ -283,6 +352,11 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
     """
     try:
         logger.info(f"Processing message from {first_name} in channel {channel_id}, thread {thread_ts}")
+        
+        # Check if agents were initialized properly
+        if not agents_initialized:
+            logger.warning("Agents not initialized properly, returning error message")
+            return "Lo siento, estoy experimentando problemas técnicos. Por favor, intenta de nuevo más tarde."
         
         # Create a unique conversation ID from channel and thread
         conversation_id = f"{channel_id}_{thread_ts}" if channel_id and thread_ts else "default"
