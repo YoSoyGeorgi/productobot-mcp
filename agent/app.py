@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 import logging
 
 try:
-    from agent.rutoagent import chat
+    from agent.ruto_agent import chat
 except ImportError:
     # Fallback for direct import when running from the agent directory
-    from rutoagent import chat
+    from ruto_agent import chat
 
 # Load environment variables
 load_dotenv()
@@ -57,7 +57,7 @@ def handle_app_mention(event, client, say):
         query=event['text'],
         channel_id=event['channel'],
         thread_ts=thread_ts,
-        user_info=user_info  # Pass user info to the chat function
+        first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
     )
 
     # Send the response - mrkdwn is the default, so we don't need to specify it
@@ -168,7 +168,7 @@ def handle_message_events(event, client, logger):
         query=event['text'],
         channel_id=event['channel'],
         thread_ts=thread_ts,
-        user_info=user_info  # Pass user info to the chat function
+        first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
     )
 
     # Send the response
