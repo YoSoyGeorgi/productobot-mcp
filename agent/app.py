@@ -4,12 +4,21 @@ from slack_bolt.adapter.fastapi import SlackRequestHandler
 from slack_bolt import App
 from dotenv import load_dotenv
 import logging
+import sys
+from pathlib import Path
+
+# Add the parent directory to sys.path to ensure modules can be found
+sys.path.append(str(Path(__file__).parent.parent))
 
 try:
     from agent.ruto_agent import chat
 except ImportError:
     # Fallback for direct import when running from the agent directory
-    from ruto_agent import chat
+    try:
+        from ruto_agent import chat
+    except ImportError:
+        # If both fail, try with absolute import
+        from Rutopia.agent.ruto_agent import chat
 
 # Load environment variables
 load_dotenv()
