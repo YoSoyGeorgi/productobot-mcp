@@ -7,18 +7,11 @@ import logging
 import sys
 from pathlib import Path
 
-# Add the parent directory to sys.path to ensure modules can be found
-sys.path.append(str(Path(__file__).parent.parent))
+# Add the current directory to sys.path
+sys.path.append(str(Path(__file__).parent))
 
-try:
-    from agent.ruto_agent import chat
-except ImportError:
-    # Fallback for direct import when running from the agent directory
-    try:
-        from ruto_agent import chat
-    except ImportError:
-        # If both fail, try with absolute import
-        from Rutopia.agent.ruto_agent import chat
+# Direct import - no try/except needed
+from ruto_agent import chat
 
 # Load environment variables
 load_dotenv()
