@@ -137,7 +137,7 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
 
 guardrail_agent = Agent( 
     name="Guardrail check",
-    instructions="Check if the user is asking you a request that is related to trip planning.",
+    instructions="Check if the user is asking you a request that is related to trip planning, experiences, lodging, or transportation in the context of a travel agency.",
     output_type=TripPlanningGuardrailOutput,
 )
 
