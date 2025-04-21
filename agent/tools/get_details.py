@@ -14,8 +14,9 @@ def get_details(id: str, table: str) -> str:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Build the SQL query using the embedding literal for the specified table
+    # Cast full_json to TEXT to match the expected return type
     sql_query = f"""
-    SELECT full_json
+    SELECT full_json::TEXT
     FROM {table}
     WHERE id = '{id}'
     LIMIT 1;
