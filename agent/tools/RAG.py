@@ -263,16 +263,7 @@ If a piece of information is not present, leave the field blank.
     # Set up Supabase client
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-    
-    # Fix for proxy parameter error in newer versions
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except TypeError as e:
-        if "unexpected keyword argument 'proxy'" in str(e):
-            from supabase._sync.client import SupabaseClient
-            supabase = SupabaseClient(SUPABASE_URL, SUPABASE_KEY)
-        else:
-            raise
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Build the SQL query using the embedding literal for the specified table
     sql_query = f"""
