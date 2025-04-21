@@ -4,11 +4,15 @@ import nest_asyncio
 import requests
 import numpy as np
 import pandas as pd
+import logging
 from typing import Union, List, Optional, Tuple, Dict, Any
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from agents import Agent, Runner, ModelSettings
 from pydantic import BaseModel
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Allow nested event loops (useful in notebooks/scripts)
 nest_asyncio.apply()
@@ -72,13 +76,17 @@ def get_embeddings(texts: Union[str, List[str]]) -> List[List[float]]:
         "input": [{"text": t} for t in texts]
     }
     try:
+        logger.info(f"Calling Jina embeddings API for {len(texts)} texts")
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         result = response.json()
+        logger.info("Successfully received embeddings from Jina API")
         return [item["embedding"] for item in result["data"]]
     except requests.RequestException as e:
-        print("Error fetching embeddings:", e)
-        return [None for _ in texts]
+        logger.error(f"Error fetching embeddings: {e}", exc_info=True)
+        # Return dummy embeddings (all zeros) instead of None to avoid errors
+        dummy_embedding = [0.0] * 1024
+        return [dummy_embedding for _ in texts]
 
 def format_search_results_for_ai(search_results: List[Dict[str, Any]], table: str = "experiences") -> str:
     """
@@ -191,9 +199,12 @@ def process_user_query(user_query: str, table: str) -> Tuple[NarrativeQuery, Lis
     Returns:
         A tuple containing (structured_narrative, supabase_response, formatted_results)
     """
-    # Determine instructions based on the specified table
-    table_instructions = {
-        "experiences": """
+    logger.info(f"Processing user query for {table}: {user_query}")
+    
+    try:
+        # Determine instructions based on the specified table
+        table_instructions = {
+            "experiences": """
 You are a structured assistant specialized in tourism experiences search. Given a user query, return a JSON object with the following fields exactly:
 - General_Description: A brief summary of the experience.
 - Service_Details: Include fullServiceDescription, serviceDescription, serviceType, destinationName.
@@ -206,7 +217,7 @@ You are a structured assistant specialized in tourism experiences search. Given 
 - Operational_Info: Any other operational notes.
 If a piece of information is not present, leave the field blank.
 """,
-        "lodging": """
+            "lodging": """
 You are a structured assistant specialized in lodging search. Given a user query, return a JSON object with the following fields exactly:
 - General_Description: A brief summary of the accommodation including type, beds, views, etc.
 - Service_Details: Include accommodationType, availableFood, facilitiesServices, numRooms.
@@ -216,7 +227,7 @@ You are a structured assistant specialized in lodging search. Given a user query
 - Operational_Info: Any additional notes or tags.
 If a piece of information is not present, leave the field blank.
 """,
-        "transport": """
+            "transport": """
 You are a structured assistant specialized in transport search. Given a user query, return a JSON object with the following fields exactly:
 - General_Description: A brief summary of the transport service.
 - Service_Details: Include full_service_description, serviceNotes, duration, serviceType, destinationName.
@@ -225,61 +236,105 @@ You are a structured assistant specialized in transport search. Given a user que
 - Operational_Info: Include max_persons, tags, supplier_name or supplier_group if applicable.
 If a piece of information is not present, leave the field blank.
 """
-    }
-    if table not in table_instructions:
-        raise ValueError(f"Unsupported table: {table}")
-    # Create a specialized agent for this table
-    specialized_agent = Agent(
-        name=f"{table}_NarrativeQueryAgent",
-        instructions=table_instructions[table],
-        model="gpt-4o-mini",
-        output_type=NarrativeQuery,
-        model_settings=ModelSettings(
-            temperature=0.3,
-            max_tokens=600,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0
+        }
+        if table not in table_instructions:
+            logger.error(f"Unsupported table: {table}")
+            raise ValueError(f"Unsupported table: {table}")
+            
+        logger.info(f"Creating specialized agent for {table}")
+        # Create a specialized agent for this table
+        specialized_agent = Agent(
+            name=f"{table}_NarrativeQueryAgent",
+            instructions=table_instructions[table],
+            model="gpt-4o-mini",
+            output_type=NarrativeQuery,
+            model_settings=ModelSettings(
+                temperature=0.3,
+                max_tokens=600,
+                top_p=1,
+                frequency_penalty=0,
+                presence_penalty=0
+            )
         )
-    )
-    structured_result = Runner.run_sync(specialized_agent, user_query)
-    structured_narrative: NarrativeQuery = structured_result.final_output
-    
-    # Format the structured narrative into text
-    refined_query_text = format_structured_narrative_to_text(structured_narrative)
-    
-    # Generate embedding for the refined query
-    refined_embedding = get_embeddings(refined_query_text)[0]
-    
-    # Debug: Check that every element in the embedding is a number
-    if not all(isinstance(x, (int, float)) for x in refined_embedding):
-        print("Warning: Non-numeric tokens found in the embedding!")
-        # Filter out non-numeric values
-        refined_embedding = [float(x) for x in refined_embedding if isinstance(x, (int, float))]
-    
-    # Convert the refined embedding into a vector literal string
-    embedding_literal = "[" + ",".join(str(x) for x in refined_embedding) + "]"
-    
-    # Set up Supabase client
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    
-    # Build the SQL query using the embedding literal for the specified table
-    sql_query = f"""
-    SELECT id::text, narrative_text, city, vector_embedding <=> '{embedding_literal}'::vector AS distance
-    FROM {table}
-    ORDER BY vector_embedding <=> '{embedding_literal}'::vector
-    LIMIT 10;
-    """
-    
-    # Execute the SQL query via the RPC function
-    response = supabase.rpc("run_sql", {"query": sql_query}).execute()
-    
-    # Format the results for AI processing
-    formatted_results = format_search_results_for_ai(response.data, table)
-    
-    return structured_narrative, response.data, formatted_results
+        
+        logger.info(f"Running specialized agent to structure the query")
+        structured_result = Runner.run_sync(specialized_agent, user_query)
+        structured_narrative: NarrativeQuery = structured_result.final_output
+        logger.info(f"Successfully structured narrative for query")
+        
+        # Format the structured narrative into text
+        refined_query_text = format_structured_narrative_to_text(structured_narrative)
+        logger.info(f"Refined query text: {refined_query_text}")
+        
+        # Check for Jina API key
+        if not os.getenv('JINA_API_KEY'):
+            logger.error("Missing JINA_API_KEY environment variable")
+            # Return with a fallback message
+            return structured_narrative, [], "Error: Missing JINA_API_KEY environment variable"
+            
+        # Generate embedding for the refined query
+        logger.info("Generating embeddings for refined query")
+        try:
+            refined_embedding = get_embeddings(refined_query_text)[0]
+            logger.info(f"Successfully generated embedding (length: {len(refined_embedding)})")
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {str(e)}", exc_info=True)
+            # Return with an error message
+            return structured_narrative, [], f"Error generating embeddings: {str(e)}"
+        
+        # Debug: Check that every element in the embedding is a number
+        if not all(isinstance(x, (int, float)) for x in refined_embedding):
+            logger.warning("Warning: Non-numeric tokens found in the embedding!")
+            # Filter out non-numeric values
+            refined_embedding = [float(x) for x in refined_embedding if isinstance(x, (int, float))]
+        
+        # Convert the refined embedding into a vector literal string
+        embedding_literal = "[" + ",".join(str(x) for x in refined_embedding) + "]"
+        
+        # Check for Supabase credentials
+        if not os.getenv('SUPABASE_URL') or not os.getenv('SUPABASE_KEY'):
+            logger.error("Missing Supabase credentials in environment variables")
+            return structured_narrative, [], "Error: Missing Supabase credentials"
+            
+        # Set up Supabase client
+        logger.info("Setting up Supabase client")
+        SUPABASE_URL = os.getenv("SUPABASE_URL")
+        SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        
+        try:
+            supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            logger.info("Successfully created Supabase client")
+        except Exception as e:
+            logger.error(f"Error creating Supabase client: {str(e)}", exc_info=True)
+            return structured_narrative, [], f"Error creating Supabase client: {str(e)}"
+        
+        # Build the SQL query using the embedding literal for the specified table
+        sql_query = f"""
+        SELECT id::text, narrative_text, city, vector_embedding <=> '{embedding_literal}'::vector AS distance
+        FROM {table}
+        ORDER BY vector_embedding <=> '{embedding_literal}'::vector
+        LIMIT 10;
+        """
+        
+        # Execute the SQL query via the RPC function
+        try:
+            logger.info(f"Executing SQL query on {table}")
+            response = supabase.rpc("run_sql", {"query": sql_query}).execute()
+            logger.info(f"Successfully retrieved {len(response.data) if response.data else 0} results from Supabase")
+        except Exception as e:
+            logger.error(f"Error executing Supabase query: {str(e)}", exc_info=True)
+            return structured_narrative, [], f"Error querying database: {str(e)}"
+        
+        # Format the results for AI processing
+        logger.info("Formatting search results for AI")
+        formatted_results = format_search_results_for_ai(response.data, table)
+        logger.info(f"Successfully formatted results (length: {len(formatted_results)})")
+        
+        return structured_narrative, response.data, formatted_results
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in process_user_query: {str(e)}", exc_info=True)
+        return NarrativeQuery(), [], f"Error processing query: {str(e)}"
 
 # Example usage:
 # user_query = "I'm looking for a hiking experience in Oaxaca"
