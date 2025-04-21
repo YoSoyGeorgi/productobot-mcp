@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from pydantic import BaseModel
+import json
 
 
 load_dotenv()
@@ -13,15 +14,11 @@ def get_details(id: str, table: str) -> str:
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    # Build the SQL query using the embedding literal for the specified table
-    # Cast full_json to TEXT to match the expected return type
-    sql_query = f"""
-    SELECT full_json::TEXT
-    FROM {table}
-    WHERE id = '{id}'
-    LIMIT 1;
-    """
-    # Execute the SQL query via the RPC function
-    response = supabase.rpc("run_sql", {"query": sql_query}).execute()
+    # Direct query without using run_sql RPC
+    response = supabase.table(table).select("full_json").eq("id", id).limit(1).execute()
     
-    return response.data[0]['full_json']
+    if not response.data or len(response.data) == 0:
+        return f"No data found for ID: {id}"
+    
+    # Return the JSON data
+    return json.dumps(response.data[0]['full_json'])
