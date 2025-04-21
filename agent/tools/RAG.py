@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from agents import Agent, Runner, ModelSettings
 from pydantic import BaseModel
+from tools.format_rag import format_experience, format_lodging, format_transport
 
 # Allow nested event loops (useful in notebooks/scripts)
 nest_asyncio.apply()
@@ -180,7 +181,7 @@ def format_search_results_for_ai(search_results: List[Dict[str, Any]], table: st
     
     return header + "\n".join(formatted_results)
 
-def process_user_query(user_query: str, table: str) -> Tuple[NarrativeQuery, List[Dict[str, Any]], str]:
+def process_user_query(user_query: str, table: str) -> Tuple[str, List[Dict[str, Any]], str]:
     """
     Process a user query for a specified table (experiences, lodging, or transport), transform it into a structured narrative, and search for similar entries.
     
@@ -189,7 +190,7 @@ def process_user_query(user_query: str, table: str) -> Tuple[NarrativeQuery, Lis
         table: The data source table to query ('experiences', 'lodging', 'transport')
         
     Returns:
-        A tuple containing (structured_narrative, supabase_response, formatted_results)
+        A tuple containing (formatted_results, supabase_response, formatted_results_for_ai)
     """
     # Determine instructions based on the specified table
     table_instructions = {
@@ -266,8 +267,9 @@ If a piece of information is not present, leave the field blank.
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Build the SQL query using the embedding literal for the specified table
+    # Now include full_json column
     sql_query = f"""
-    SELECT id::text, narrative_text, city, vector_embedding <=> '{embedding_literal}'::vector AS distance
+    SELECT id::text, narrative_text, city, full_json, vector_embedding <=> '{embedding_literal}'::vector AS distance
     FROM {table}
     ORDER BY vector_embedding <=> '{embedding_literal}'::vector
     LIMIT 10;
@@ -276,10 +278,23 @@ If a piece of information is not present, leave the field blank.
     # Execute the SQL query via the RPC function
     response = supabase.rpc("run_sql", {"query": sql_query}).execute()
     
-    # Format the results for AI processing
-    formatted_results = format_search_results_for_ai(response.data, table)
+    # Format the results for AI processing (keep this for compatibility)
+    formatted_results_for_ai = format_search_results_for_ai(response.data, table)
     
-    return structured_narrative, response.data, formatted_results
+    # Format each result using the appropriate formatter from format_rag.py
+    formatted_results = []
+    for result in response.data:
+        if table == "experiences":
+            formatted_results.append(format_experience(result))
+        elif table == "lodging":
+            formatted_results.append(format_lodging(result))
+        elif table == "transport":
+            formatted_results.append(format_transport(result))
+    
+    # Join all formatted results into a single string
+    formatted_output = "\n\n".join(formatted_results)
+    
+    return formatted_output, response.data, formatted_results_for_ai
 
 # Example usage:
 # user_query = "I'm looking for a hiking experience in Oaxaca"

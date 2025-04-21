@@ -5,7 +5,6 @@ from agents.exceptions import InputGuardrailTripwireTriggered
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
 from tools.RAG import process_user_query
-from tools.get_details import get_details
 from typing import Optional, Dict, Any, Callable
 import logging
 
@@ -70,24 +69,6 @@ async def get_city_weather(contextWrapper: RunContextWrapper[UserInfoContext], c
     contextWrapper.context.city = city
     return f"The weather in {city} is sunny {contextWrapper.context.first_name}."
 
-@function_tool
-async def get_details_experience(id: str) -> str:
-    """Get the details of an experience from the knowledge base.
-    Args:
-        id: The id of the experience to get the details for.
-    Returns:
-        The details of the experience from the knowledge base.
-    """
-    logger.info(f"get_details_experience called with id: {id}")
-    try:
-        logger.info("Calling get_details for experiences")
-        details = get_details(id, "experiences")
-        logger.info(f"Details: {details}")
-        
-        return details
-    except Exception as e:
-        logger.error(f"Error in get_details_experience: {str(e)}", exc_info=True)
-        return f"Lo siento, tuve un problema buscando experiencias para '{id}'. Error: {str(e)}"
 
 @function_tool
 async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
@@ -171,37 +152,50 @@ experiences_agent = Agent[UserInfoContext](
     1. Ask for the type of experience the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_experiences tool to get information about experiences related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-        🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
-        📍 *Isla Holbox* | 🧭 *Operadora local* | 🕒 *Tour de 2 horas antes de medianoche*
+        *Discovering the cenotes of Homun by bicycle*  
+        📍 *Telchaquillo, Yucatan* | 🧭 *Centro Ecoturístico* | ⏱️ *8h tour*
 
-        Rema lejos de las luces del pueblo y sumérgete en el cielo estrellado de Holbox. Este tour guiado te permite observar constelaciones, disfrutar de aguas bioluminiscentes y nadar bajo las estrellas. No se requiere experiencia previa, solo ganas de vivir algo mágico.
+        Today, you will embark on an approximately 8-hour bicycle tour from Telchaquillo to Chunkanán, where you will discover the beauty of a part of the Yucatán cenotes ring, the cenotes of Homún. You will meet your Spanish-speaking guide at the meeting point to equip yourself with safety helmets and receive some instructions before starting this bicycle adventure towards the three cenotes.
 
-        📍 *Punto de encuentro:* Av Damero, Centro, 77310 Holbox, Q.R.  
-        👤 *Edades:* Solo mayores de 6 años (no se permiten menores)  
-        👥 *Proveedor:* Proveedor A  
-        ✅ *Producto 2025:* Listo  
-        💫 *Tag:* `#nomenoresde6años`
+        *Languages:* SPA, ENG  
+        *Availability:* Monday through Sunday  
+        *Includes:* Guide, Mayan ceremony, J-men and sacred drink  
+        *Pricing (MXN):*
+        * 1 pax: $6,800
+        * 2 pax: $3,400
+        * 3 pax: $2,266.66
+        * 4-10 pax: $1,700
+
+        *Age Info:* 12+ years (no children or infants)  
+        *Contact:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)  
+        *Impact:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
     3. If the information does not answer the employee's query, offer an alternative experience, always say why you are offering an alternative. example:
 
-        No encontré exactamente lo que buscas, pero si buscas una experiencia de kayak puedes ofrecer la siguiente experiencia:
+        No encontré exactamente lo que buscas, pero si buscas una experiencia en Yucatán puedes ofrecer la siguiente experiencia:
 
-        🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
-        📍 *Isla Holbox* | 🧭 *Operadora local* | 🕒 *Tour de 2 horas antes de medianoche*
+        *Discovering the cenotes of Homun by bicycle*  
+        📍 *Telchaquillo, Yucatan* | 🧭 *Centro Ecoturístico* | ⏱️ *8h tour*
 
-        Rema lejos de las luces del pueblo y sumérgete en el cielo estrellado de Holbox. Este tour guiado te permite observar constelaciones, disfrutar de aguas bioluminiscentes y nadar bajo las estrellas. No se requiere experiencia previa, solo ganas de vivir algo mágico.
+        Today, you will embark on an approximately 8-hour bicycle tour from Telchaquillo to Chunkanán, where you will discover the beauty of a part of the Yucatán cenotes ring, the cenotes of Homún. You will meet your Spanish-speaking guide at the meeting point to equip yourself with safety helmets and receive some instructions before starting this bicycle adventure towards the three cenotes.
 
-        📍 *Punto de encuentro:* Av Damero, Centro, 77310 Holbox, Q.R.  
-        👤 *Edades:* Solo mayores de 6 años (no se permiten menores)  
-        👥 *Proveedor:* Proveedor A  
-        ✅ *Producto 2025:* Listo  
-        💫 *Tag:* `#nomenoresde6años`
+        *Languages:* SPA, ENG  
+        *Availability:* Monday through Sunday  
+        *Includes:* Guide, Mayan ceremony, J-men and sacred drink  
+        *Pricing (MXN):*
+        * 1 pax: $6,800
+        * 2 pax: $3,400
+        * 3 pax: $2,266.66
+        * 4-10 pax: $1,700
+
+        *Age Info:* 12+ years (no children or infants)  
+        *Contact:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)  
+        *Impact:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
     4. If the employee asks a question that is not related to the routine, transfer back to the triage agent. 
-    5. If the employee asks for the details of an experience like pricing, use the get_details_experience tool to get the details of the experience passing the id of the experience.
     """,
     model="gpt-4o-mini",
-    tools=[get_experiences, get_details_experience]
+    tools=[get_experiences]
 )
 
 lodging_agent = Agent[UserInfoContext](
@@ -216,16 +210,19 @@ lodging_agent = Agent[UserInfoContext](
     1. Ask for the type of lodging the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_lodging tool to get information about lodging related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-        🏨 *Hospedaje boutique en Calakmul*  
-        📍 *Calakmul* | 🛏️ *6 habitaciones* | 🍽️ *Incluye desayuno, comida y cena*
+        *Hotel B Cozumel - Jungle View Room*  
+        📍 *Cozumel, Quintana Roo* | 🏨 *Hotel (45 rooms)* | 🍽️ *Breakfast, Lunch, Dinner*
 
-        Alojamiento tipo boutique con restaurante, bar, estacionamiento y resguardo de equipaje. Ideal para explorar Calakmul con comodidad y atención personalizada.
+        *Facilities & Services:* Parking, Restaurant, Bar, SPA, Pool, Laundry, Room Service, Luggage Storage, Pet Friendly, 24-hour Reception, Elevator
 
-        📍 *Dirección:* Camino a laguna Carolina km.1, Ejido Valentín Gómez Farías, 24643 Camp.  
-        🌐 *Mapa:* https://maps.app.goo.gl/m532b7PnnBjxFcgj8  
-        ⏱️ *Tiempo de respuesta:* No se aceptan reservas de último minuto  
-        👤 *Edades:* Sin información específica  
-        🍼 *Tag:* `#cuna`
+        *Room Details:* Jungle view room with 1 double bed  
+        *Breakfast Hours:* American breakfast | 7:00 to 11:30  
+        *Response Time:* Under 48 hours  
+        *Age Policy:* Family-friendly  
+        *Location:* Av. Juárez N° 88, colonia Centro  
+        *Google Maps:* https://maps.app.goo.gl/bsuSLXHtBGEimy1f9  
+        *Reservation Contact:* Diamela Gonzales (reservaciones@hotelbcozumel.com | +52 987 872 0300)  
+        *Reservation Guarantee:* One night deposit required
 
     3. If the employee asks a question that is not related to the routine, transfer back to the triage agent. """,
     model="gpt-4o-mini",
@@ -245,15 +242,23 @@ transportation_agent = Agent[UserInfoContext](
     1. Ask for the type of transportation the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_transportation tool to get information about transportation related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-        🚐 *Transporte privado: Akumal → Isla Holbox*  
-        📍 *Isla Holbox* | 🛥️ *Incluye ferry, taxi y transporte marítimo* | 📅 *Disponible todos los días*
+        *Private Transfer: Bacalar to Tulum*  
+        📍 *Bacalar, Quintana Roo* | 🚗 *Private Transportation* | 🕒 *2h50min travel time*
 
-        Traslado privado desde Akumal hasta Isla Holbox, con todos los medios incluidos: transporte terrestre, tickets de ferry y taxi local para llegar a tu destino sin complicaciones.
+        *Vehicle Options:*
+        * Sedan (4 passengers): $2,000-$2,500 MXN
+        * Van (10 passengers): $3,000-$6,500 MXN
 
-        📍 *Dirección:* Holbox, Quintana Roo, México  
-        🌐 *Mapa:* https://www.google.com/maps/place/El+Holboxe%C3%B1o/@21.5222995,-87.379604,15z/data=!4m2!3m1!1s0x0:0x4507d35ed7b4050f?sa=X&ved=2ahUKEwioiqCgkc6DAxUnj2oFHaCiAjgQ_BJ6BAgJEAA  
-        ⏱️ *Tiempo de respuesta:* Menos de 48 hrs  
-        👤 *Edades:* Sin restricciones
+        *Details:*
+        * Baggage Allowance: 2 bags, 25kg each
+        * Service Type: Private transport
+        * Availability: Monday through Sunday
+        * Valid Until: January 31, 2025
+
+        *Contact:* David Martinez (davidmartinezbacalar@gmail.com | +52 983 120 6179)  
+        *Reservation Guarantee:* 25% deposit required  
+        *Location:* Calle 10 Mza 15 Lote 4, Hacienda Sor Juana Inés de la Cruz, Bacalar  
+        *Google Maps:* https://maps.app.goo.gl/hDcBfHvdxpcbUZCw8
 
     3. If the information does not answer the employee's query, offer an alternative route or transportation.
     4. If the employee asks a question that is not related to the routine, transfer back to the triage agent.
