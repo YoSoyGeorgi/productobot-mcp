@@ -170,7 +170,7 @@ experiences_agent = Agent[UserInfoContext](
         *Contacto:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)
         *Impacto:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
-    3. If the information does not answer the employee's query, offer an alternative experience, always say why you are offering an alternative. example:
+    3. If the information does not answer the employee's query as an exact match, offer an alternative experience, always say why you are offering an alternative (similar experience, close location, price, etc.). example:
 
         No encontré exactamente lo que buscas, pero si buscas una experiencia en Yucatán puedes ofrecer la siguiente experiencia:
 
