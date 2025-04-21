@@ -7,6 +7,7 @@ import logging
 import sys
 import asyncio
 from pathlib import Path
+from functools import wraps
 
 # Add the current directory to sys.path
 sys.path.append(str(Path(__file__).parent))
@@ -38,9 +39,30 @@ def get_user_info(client, user_id):
         logging.error(f"Error fetching user info: {e}")
         return {"id": user_id}
 
+# Helper to run async functions in sync context
+def run_async(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # If no event loop exists, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            # Create a future in the running loop
+            future = asyncio.run_coroutine_threadsafe(func(*args, **kwargs), loop)
+            return future.result()
+        else:
+            # If loop is not running, run the coroutine until complete
+            return loop.run_until_complete(func(*args, **kwargs))
+    return wrapper
+
 # Synchronous wrapper for the async chat function
-def sync_chat(**kwargs):
-    return asyncio.run(chat(**kwargs))
+@run_async
+async def sync_chat(**kwargs):
+    return await chat(**kwargs)
 
 # Event handlers
 @app.event("app_mention")
@@ -58,27 +80,35 @@ def handle_app_mention(event, client, say):
     # Get thread timestamp - use message ts as thread ts if it's the start of a thread
     thread_ts = event.get('thread_ts', event['ts'])
     
-    # Pass channel and thread info to maintain conversation context
-    response = sync_chat(
-        chatbot_status="on",
-        query=event['text'],
-        channel_id=event['channel'],
-        thread_ts=thread_ts,
-        first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
-    )
+    try:
+        # Pass channel and thread info to maintain conversation context
+        response = sync_chat(
+            chatbot_status="on",
+            query=event['text'],
+            channel_id=event['channel'],
+            thread_ts=thread_ts,
+            first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
+        )
 
-    # Send the response - mrkdwn is the default, so we don't need to specify it
-    client.chat_postMessage(
-        channel=event['channel'],
-        thread_ts=thread_ts,
-        text=response
-    )
-
-    client.reactions_remove(
-        channel=event['channel'],
-        timestamp=event['ts'],
-        name='eyes'
-    )
+        # Send the response - mrkdwn is the default, so we don't need to specify it
+        client.chat_postMessage(
+            channel=event['channel'],
+            thread_ts=thread_ts,
+            text=response
+        )
+    except Exception as e:
+        logging.error(f"Error processing message: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=event['channel'],
+            thread_ts=thread_ts,
+            text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+        )
+    finally:
+        client.reactions_remove(
+            channel=event['channel'],
+            timestamp=event['ts'],
+            name='eyes'
+        )
 
 @app.event("app_home_opened")
 def handle_app_home_opened_events(event, client, logger):
@@ -169,28 +199,36 @@ def handle_message_events(event, client, logger):
         name='eyes'
     )
     
-    # Process the message with the chat function
-    response = sync_chat(
-        chatbot_status="on",
-        query=event['text'],
-        channel_id=event['channel'],
-        thread_ts=thread_ts,
-        first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
-    )
+    try:
+        # Process the message with the chat function
+        response = sync_chat(
+            chatbot_status="on",
+            query=event['text'],
+            channel_id=event['channel'],
+            thread_ts=thread_ts,
+            first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
+        )
 
-    # Send the response
-    client.chat_postMessage(
-        channel=event['channel'],
-        thread_ts=thread_ts,
-        text=response
-    )
-    
-    # Remove the reaction
-    client.reactions_remove(
-        channel=event['channel'],
-        timestamp=event['ts'],
-        name='eyes'
-    )
+        # Send the response
+        client.chat_postMessage(
+            channel=event['channel'],
+            thread_ts=thread_ts,
+            text=response
+        )
+    except Exception as e:
+        logger.error(f"Error processing message: {e}", exc_info=True)
+        client.chat_postMessage(
+            channel=event['channel'],
+            thread_ts=thread_ts,
+            text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+        )
+    finally:
+        # Remove the reaction
+        client.reactions_remove(
+            channel=event['channel'],
+            timestamp=event['ts'],
+            name='eyes'
+        )
 
 # Initialize the FastAPI app
 api = FastAPI(title="RutoBot API")

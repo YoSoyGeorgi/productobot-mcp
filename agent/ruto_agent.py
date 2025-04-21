@@ -257,7 +257,9 @@ transportation_agent.handoffs.append(router_agent)
 # Define custom hooks to show a wait message before tool execution
 class PreToolMessageHook(RunHooks):
     async def on_tool_start(self, context, agent, tool):
-        logger.info(f"Agent {agent.name} is starting tool {tool.__name__}")
+        # Get tool name safely - FunctionTool objects don't have __name__
+        tool_name = getattr(tool, "name", str(tool))
+        logger.info(f"Agent {agent.name} is starting tool {tool_name}")
 
 class SlackMessageFormatter:
     @staticmethod
