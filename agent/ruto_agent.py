@@ -264,36 +264,12 @@ transportation_agent.handoffs.append(router_agent)
 # Define custom hooks to show a wait message before tool execution
 class PreToolMessageHook(RunHooks):
     async def on_tool_start(self, context, agent, tool):
-        # Get tool name safely 
+        # Get tool name safely - FunctionTool objects don't have __name__
         if hasattr(tool, "name"):
             tool_name = tool.name
-        elif hasattr(tool, "__name__"):
-            tool_name = tool.__name__
         else:
-            # Log the tool's structure to understand what attributes it has
-            tool_dict = {}
-            for attr in dir(tool):
-                if not attr.startswith('__'):
-                    try:
-                        tool_dict[attr] = getattr(tool, attr)
-                    except Exception:
-                        tool_dict[attr] = "Error accessing attribute"
-            
-            logger.info(f"Tool attributes: {tool_dict}")
             tool_name = str(tool)
-            
         logger.info(f"Agent {agent.name} is starting tool {tool_name}")
-        logger.info(f"Tool type: {type(tool)}")
-        
-        # If it's a FunctionTool, log its arguments
-        if hasattr(tool, "args"):
-            logger.info(f"Tool args: {tool.args}")
-            
-        # Log the tool's class path
-        if hasattr(tool, "__class__"):
-            module = tool.__class__.__module__
-            class_name = tool.__class__.__name__
-            logger.info(f"Tool class path: {module}.{class_name}")
 
 class SlackMessageFormatter:
     @staticmethod
