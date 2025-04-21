@@ -151,7 +151,8 @@ experiences_agent = Agent[UserInfoContext](
     Use the following routine to support the employee.
     # Routine
     1. Ask for the type of experience the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
-    2. Use the get_experiences tool to get information from the knowledge base about experiences related to the employee's query. Think on the best fit options for the employee's query and explain your selection in a small sentence.
+    2. Use the get_experiences tool to get information from the knowledge base about experiences related to the employee's query. Think on the best fit options for the employee's query and explain your selection in a small sentence, it might not be an exact match but it should be close.
+    2.5 Check that the location of the experience is close to the location of the employee's query, if not,  aknowledge it and offer an alternative experience.
     3. Show the best fit options to the employee in a format for Slack, example:
 
         *Descubriendo los cenotes de Homún en bicicleta*
@@ -172,7 +173,7 @@ experiences_agent = Agent[UserInfoContext](
         *Contacto:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)
         *Impacto:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
-    3. If the information does not answer the employee's query as an exact match, offer an alternative experience, always say why you are offering an alternative (similar experience, close location, price, etc.). example:
+    3. Important: If the information does not answer the employee's query as an exact match, offer an alternative experience, always say why you are offering an alternative (similar experience, close location, price, etc.). Never say anything is not in the knowledge base, if there is no good alternative, just say that. example:
 
         No encontré exactamente lo que buscas, pero si buscas una experiencia en Yucatán puedes ofrecer la siguiente experiencia:
 
