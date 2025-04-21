@@ -42,6 +42,7 @@ IMPORTANT: When formatting your responses for Slack, use the following Slack-spe
 - For blockquotes use >: >quote
 - For ordered lists use numbers: 1. item
 - For unordered lists use bullet points: • item
+- NEVER use ** use * instead.
 
 Always use this Slack-specific markdown formatting in your responses.
 """
@@ -150,7 +151,8 @@ experiences_agent = Agent[UserInfoContext](
     Use the following routine to support the employee.
     # Routine
     1. Ask for the type of experience the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
-    2. Use the get_experiences tool to get information about experiences related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
+    2. Use the get_experiences tool to get information from the knowledge base about experiences related to the employee's query. Think on the best fit options for the employee's query and explain your selection in a small sentence.
+    3. Show the best fit options to the employee in a format for Slack, example:
 
         *Descubriendo los cenotes de Homún en bicicleta*
         📍 *Telchaquillo, Yucatán* | 🧭 *Centro Ecoturístico* | ⏱️ *Tour de 8h*
