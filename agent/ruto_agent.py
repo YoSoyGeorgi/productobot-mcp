@@ -70,6 +70,25 @@ async def get_city_weather(contextWrapper: RunContextWrapper[UserInfoContext], c
     return f"The weather in {city} is sunny {contextWrapper.context.first_name}."
 
 @function_tool
+async def get_details_experience(id: str) -> str:
+    """Get the details of an experience from the knowledge base.
+    Args:
+        id: The id of the experience to get the details for.
+    Returns:
+        The details of the experience from the knowledge base.
+    """
+    logger.info(f"get_details_experience called with id: {id}")
+    try:
+        logger.info("Calling get_details for experiences")
+        details = get_details(id, "experiences")
+        logger.info(f"Details: {details}")
+        
+        return details
+    except Exception as e:
+        logger.error(f"Error in get_details_experience: {str(e)}", exc_info=True)
+        return f"Lo siento, tuve un problema buscando experiencias para '{id}'. Error: {str(e)}"
+
+@function_tool
 async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
     """Get the experiences form the knowledge base.
     Args:
@@ -148,7 +167,7 @@ experiences_agent = Agent[UserInfoContext](
     You are a experiences agent. If you are speaking to a employee of Rutopía the travel agency, you probably were transferred to from the triage agent.
     Use the following routine to support the employee.
     # Routine
-    1. Ask for the type of experience the employee is looking for.
+    1. Ask for the type of experience the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_experiences tool to get information about experiences related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
         🌌 *Experiencia destacada: Kayak bajo las estrellas en Holbox*  
@@ -178,9 +197,10 @@ experiences_agent = Agent[UserInfoContext](
         💫 *Tag:* `#nomenoresde6años`
 
     4. If the employee asks a question that is not related to the routine, transfer back to the triage agent. 
+    5. If the employee asks for the details of an experience like pricing, use the get_details_experience tool to get the details of the experience passing the id of the experience.
     """,
     model="gpt-4o-mini",
-    tools=[get_experiences]
+    tools=[get_experiences, get_details_experience]
 )
 
 lodging_agent = Agent[UserInfoContext](
@@ -192,7 +212,7 @@ lodging_agent = Agent[UserInfoContext](
     You are a lodging agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
     Use the following routine to support the employee.
     # Routine
-    1. Ask for the type of lodging the employee is looking for.
+    1. Ask for the type of lodging the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_lodging tool to get information about lodging related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
         🏨 *Hospedaje boutique en Calakmul*  
@@ -217,10 +237,11 @@ transportation_agent = Agent[UserInfoContext](
     instructions=f"""
     {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
+
     You are a transportation agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
     Use the following routine to support the employee.
     # Routine
-    1. Ask for the type of transportation the employee is looking for.
+    1. Ask for the type of transportation the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_transportation tool to get information about transportation related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
         🚐 *Transporte privado: Akumal → Isla Holbox*  
