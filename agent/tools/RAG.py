@@ -81,106 +81,6 @@ def get_embeddings(texts: Union[str, List[str]]) -> List[List[float]]:
         print("Error fetching embeddings:", e)
         return [None for _ in texts]
 
-def format_search_results_for_ai(search_results: List[Dict[str, Any]], table: str = "experiences") -> str:
-    """
-    Format search results into a readable text chunk optimized for AI processing.
-    
-    Args:
-        search_results: List of dictionaries containing search results
-        table: The type of data ('experiences', 'lodging', or 'transport')
-        
-    Returns:
-        A formatted string with all search results
-    """
-    formatted_results = []
-    item_type = table.upper().rstrip('s')  # Convert "experiences" to "EXPERIENCE", etc.
-    
-    # Create a header with result count
-    header = f"### FOUND {len(search_results)} {table.upper()} ###\n\n"
-    
-    for i, result in enumerate(search_results, 1):
-        # Extract basic information
-        item_id = result.get('id', 'Unknown ID')
-        city = result.get('city', 'Location not specified')
-        distance = result.get('distance', 0)
-        relevance = 1 - distance  # Convert distance to relevance score
-        
-        # Format the narrative text - parse it into sections if possible
-        narrative = result.get('narrative_text', '')
-        
-        # Create a formatted entry with consistent section markers
-        entry = f"### {item_type} #{i} ###\n"
-        entry += f"ID: {item_id}\n"
-        entry += f"LOCATION: {city}\n"
-        entry += f"RELEVANCE: {relevance:.4f}\n"
-        entry += f"---\n"
-        
-        # Parse the narrative based on the table type
-        if table == "lodging":
-            # Handle the specific format of lodging narratives
-            sections = {}
-            
-            # Parse the lodging narrative which typically uses pipe and key:value format
-            lines = narrative.split('\n')
-            current_section = None
-            
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Check if this is a section header
-                if ":" in line and not "|" in line.split(":", 1)[0]:
-                    current_section = line.split(":", 1)[0].strip()
-                    section_content = line.split(":", 1)[1].strip()
-                    sections[current_section] = section_content
-                elif current_section:
-                    # This is a continuation of the previous section
-                    sections[current_section] += "\n" + line
-            
-            # Format each section
-            for section_name, content in sections.items():
-                entry += f"[{section_name}]\n{content}\n\n"
-        elif "General Description:" in narrative:
-            # Standard section-based narrative (used for experiences and transport)
-            parts = narrative.split("\n")
-            current_section = ""
-            section_content = ""
-            
-            for part in parts:
-                if part.strip() == "":
-                    continue
-                    
-                if ":" in part and part.split(":", 1)[0].strip() in [
-                    "General Description", "Service Details", "Supplier Information",
-                    "Tariff Information", "Location", "Facilities", "Availability",
-                    "Age Restrictions", "Operational Info"
-                ]:
-                    # If we were building a previous section, save it
-                    if current_section and section_content:
-                        # Format section with clear markers
-                        entry += f"[{current_section}]\n{section_content.strip()}\n\n"
-                    
-                    # Start a new section
-                    current_section = part.split(":", 1)[0].strip()
-                    section_content = part.split(":", 1)[1].strip() + "\n"
-                else:
-                    # Continue with current section
-                    section_content += part + "\n"
-            
-            # Add the last section
-            if current_section and section_content:
-                entry += f"[{current_section}]\n{section_content.strip()}\n\n"
-        else:
-            # If we couldn't parse sections, use the raw narrative
-            entry += f"[Content]\n{narrative}\n\n"
-            
-        entry += f"### END {item_type} #{i} ###\n\n"
-        
-        formatted_results.append(entry)
-    
-    return header + "\n".join(formatted_results)
-
 def process_user_query(user_query: str, table: str) -> Tuple[str, List[Dict[str, Any]], str]:
     """
     Process a user query for a specified table (experiences, lodging, or transport), transform it into a structured narrative, and search for similar entries.
@@ -278,9 +178,6 @@ If a piece of information is not present, leave the field blank.
     # Execute the SQL query via the RPC function
     response = supabase.rpc("run_sql", {"query": sql_query}).execute()
     
-    # Format the results for AI processing (keep this for compatibility)
-    formatted_results_for_ai = format_search_results_for_ai(response.data, table)
-    
     # Format each result using the appropriate formatter from format_rag.py
     formatted_results = []
     for result in response.data:
@@ -294,7 +191,7 @@ If a piece of information is not present, leave the field blank.
     # Join all formatted results into a single string
     formatted_output = "\n\n".join(formatted_results)
     
-    return formatted_output, response.data, formatted_results_for_ai
+    return formatted_output, response.data
 
 # Example usage:
 # user_query = "I'm looking for a hiking experience in Oaxaca"

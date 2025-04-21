@@ -81,7 +81,7 @@ async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], us
     logger.info(f"get_experiences called with query: {user_query}")
     try:
         logger.info("Calling process_user_query for experiences")
-        structured_narrative, search_results, formatted_results = process_user_query(user_query, "experiences")
+        formatted_results, search_results = process_user_query(user_query, "experiences")
         logger.info(f"Search results count: {len(search_results) if search_results else 0}")
         
         contextWrapper.context.user_query = user_query
@@ -98,7 +98,7 @@ async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], user_q
     Returns:
         The lodging from the knowledge base.
     """
-    structured_narrative, search_results, formatted_results = process_user_query(user_query, "lodging")
+    formatted_results, search_results = process_user_query(user_query, "lodging")
 
     contextWrapper.context.user_query = user_query
     return formatted_results
@@ -111,7 +111,7 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     Returns:
         The transportation from the knowledge base.
     """
-    structured_narrative, search_results, formatted_results = process_user_query(user_query, "transport")
+    formatted_results, search_results = process_user_query(user_query, "transport")
 
     contextWrapper.context.user_query = user_query
     return formatted_results
@@ -152,47 +152,47 @@ experiences_agent = Agent[UserInfoContext](
     1. Ask for the type of experience the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_experiences tool to get information about experiences related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-        *Discovering the cenotes of Homun by bicycle*  
-        📍 *Telchaquillo, Yucatan* | 🧭 *Centro Ecoturístico* | ⏱️ *8h tour*
+        *Descubriendo los cenotes de Homún en bicicleta*
+        📍 *Telchaquillo, Yucatán* | 🧭 *Centro Ecoturístico* | ⏱️ *Tour de 8h*
 
-        Today, you will embark on an approximately 8-hour bicycle tour from Telchaquillo to Chunkanán, where you will discover the beauty of a part of the Yucatán cenotes ring, the cenotes of Homún. You will meet your Spanish-speaking guide at the meeting point to equip yourself with safety helmets and receive some instructions before starting this bicycle adventure towards the three cenotes.
+        Hoy, emprenderás un tour en bicicleta de aproximadamente 8 horas desde Telchaquillo hasta Chunkanán, donde descubrirás la belleza de una parte del anillo de cenotes de Yucatán, los cenotes de Homún. Te reunirás con tu guía de habla hispana en el punto de encuentro para equiparte con cascos de seguridad y recibir algunas instrucciones antes de comenzar esta aventura en bicicleta hacia los tres cenotes.
 
-        *Languages:* SPA, ENG  
-        *Availability:* Monday through Sunday  
-        *Includes:* Guide, Mayan ceremony, J-men and sacred drink  
-        *Pricing (MXN):*
+        *Idiomas:* ESP, ING
+        *Disponibilidad:* Lunes a Domingo
+        *Incluye:* Guía, ceremonia maya, J-men y bebida sagrada
+        *Precios (MXN):*
         * 1 pax: $6,800
         * 2 pax: $3,400
         * 3 pax: $2,266.66
         * 4-10 pax: $1,700
 
-        *Age Info:* 12+ years (no children or infants)  
-        *Contact:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)  
-        *Impact:* Cooperativa, Indígenas, Dueño mexicano, PYMES
+        *Info Edad:* 12+ años (no niños ni infantes)
+        *Contacto:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)
+        *Impacto:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
     3. If the information does not answer the employee's query, offer an alternative experience, always say why you are offering an alternative. example:
 
         No encontré exactamente lo que buscas, pero si buscas una experiencia en Yucatán puedes ofrecer la siguiente experiencia:
 
-        *Discovering the cenotes of Homun by bicycle*  
-        📍 *Telchaquillo, Yucatan* | 🧭 *Centro Ecoturístico* | ⏱️ *8h tour*
+        *Descubriendo los cenotes de Homún en bicicleta*
+        📍 *Telchaquillo, Yucatán* | 🧭 *Centro Ecoturístico* | ⏱️ *Tour de 8h*
 
-        Today, you will embark on an approximately 8-hour bicycle tour from Telchaquillo to Chunkanán, where you will discover the beauty of a part of the Yucatán cenotes ring, the cenotes of Homún. You will meet your Spanish-speaking guide at the meeting point to equip yourself with safety helmets and receive some instructions before starting this bicycle adventure towards the three cenotes.
+        Hoy, emprenderás un tour en bicicleta de aproximadamente 8 horas desde Telchaquillo hasta Chunkanán, donde descubrirás la belleza de una parte del anillo de cenotes de Yucatán, los cenotes de Homún. Te reunirás con tu guía de habla hispana en el punto de encuentro para equiparte con cascos de seguridad y recibir algunas instrucciones antes de comenzar esta aventura en bicicleta hacia los tres cenotes.
 
-        *Languages:* SPA, ENG  
-        *Availability:* Monday through Sunday  
-        *Includes:* Guide, Mayan ceremony, J-men and sacred drink  
-        *Pricing (MXN):*
+        *Idiomas:* ESP, ING
+        *Disponibilidad:* Lunes a Domingo
+        *Incluye:* Guía, ceremonia maya, J-men y bebida sagrada
+        *Precios (MXN):*
         * 1 pax: $6,800
         * 2 pax: $3,400
         * 3 pax: $2,266.66
         * 4-10 pax: $1,700
 
-        *Age Info:* 12+ years (no children or infants)  
-        *Contact:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)  
-        *Impact:* Cooperativa, Indígenas, Dueño mexicano, PYMES
+        *Info Edad:* 12+ años (no niños ni infantes)
+        *Contacto:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)
+        *Impacto:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
-    4. If the employee asks a question that is not related to the routine, transfer back to the triage agent. 
+    4. If the employee asks a question that is not related to the routine, transfer back to the triage agent.
     """,
     model="gpt-4o-mini",
     tools=[get_experiences]
@@ -210,19 +210,19 @@ lodging_agent = Agent[UserInfoContext](
     1. Ask for the type of lodging the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_lodging tool to get information about lodging related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-        *Hotel B Cozumel - Jungle View Room*  
-        📍 *Cozumel, Quintana Roo* | 🏨 *Hotel (45 rooms)* | 🍽️ *Breakfast, Lunch, Dinner*
+        *Hotel B Cozumel - Habitación Vista Selva*
+        📍 *Cozumel, Quintana Roo* | 🏨 *Hotel (45 habitaciones)* | 🍽️ *Desayuno, Comida, Cena*
 
-        *Facilities & Services:* Parking, Restaurant, Bar, SPA, Pool, Laundry, Room Service, Luggage Storage, Pet Friendly, 24-hour Reception, Elevator
+        *Instalaciones y Servicios:* Estacionamiento, Restaurante, Bar, SPA, Piscina, Lavandería, Servicio a Cuarto, Guardaequipaje, Pet Friendly, Recepción 24h, Elevador
 
-        *Room Details:* Jungle view room with 1 double bed  
-        *Breakfast Hours:* American breakfast | 7:00 to 11:30  
-        *Response Time:* Under 48 hours  
-        *Age Policy:* Family-friendly  
-        *Location:* Av. Juárez N° 88, colonia Centro  
-        *Google Maps:* https://maps.app.goo.gl/bsuSLXHtBGEimy1f9  
-        *Reservation Contact:* Diamela Gonzales (reservaciones@hotelbcozumel.com | +52 987 872 0300)  
-        *Reservation Guarantee:* One night deposit required
+        *Detalles Habitación:* Habitación vista selva con 1 cama doble
+        *Horario Desayuno:* Desayuno americano | 7:00 a 11:30
+        *Tiempo de Respuesta:* Menos de 48 horas
+        *Política Edad:* Apto para familias
+        *Ubicación:* Av. Juárez N° 88, colonia Centro
+        *Google Maps:* https://maps.app.goo.gl/bsuSLXHtBGEimy1f9
+        *Contacto Reservas:* Diamela Gonzales (reservaciones@hotelbcozumel.com | +52 987 872 0300)
+        *Garantía Reserva:* Se requiere depósito de una noche
 
     3. If the employee asks a question that is not related to the routine, transfer back to the triage agent. """,
     model="gpt-4o-mini",
@@ -236,28 +236,28 @@ transportation_agent = Agent[UserInfoContext](
     {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
 
-    You are a transportation agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
+    You are a transportation agent of Rutopía travel agency. If you are speaking to a employee of Rutopía the travel agency, you probably were transferred to from the triage agent.
     Use the following routine to support the employee.
     # Routine
     1. Ask for the type of transportation the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
     2. Use the get_transportation tool to get information about transportation related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
-        *Private Transfer: Bacalar to Tulum*  
-        📍 *Bacalar, Quintana Roo* | 🚗 *Private Transportation* | 🕒 *2h50min travel time*
+        *Transporte Privado: Bacalar a Tulum*
+        📍 *Bacalar, Quintana Roo* | 🚗 *Transporte Privado* | 🕒 *2h50min de viaje*
 
-        *Vehicle Options:*
-        * Sedan (4 passengers): $2,000-$2,500 MXN
-        * Van (10 passengers): $3,000-$6,500 MXN
+        *Opciones de Vehículo:*
+        * Sedán (4 pasajeros): $2,000-$2,500 MXN
+        * Van (10 pasajeros): $3,000-$6,500 MXN
 
-        *Details:*
-        * Baggage Allowance: 2 bags, 25kg each
-        * Service Type: Private transport
-        * Availability: Monday through Sunday
-        * Valid Until: January 31, 2025
+        *Detalles:*
+        * Equipaje Permitido: 2 maletas, 25kg cada una
+        * Tipo de Servicio: Transporte privado
+        * Disponibilidad: Lunes a Domingo
+        * Válido Hasta: 31 de enero de 2025
 
-        *Contact:* David Martinez (davidmartinezbacalar@gmail.com | +52 983 120 6179)  
-        *Reservation Guarantee:* 25% deposit required  
-        *Location:* Calle 10 Mza 15 Lote 4, Hacienda Sor Juana Inés de la Cruz, Bacalar  
+        *Contacto:* David Martinez (davidmartinezbacalar@gmail.com | +52 983 120 6179)
+        *Garantía de Reserva:* Se requiere depósito del 25%
+        *Ubicación:* Calle 10 Mza 15 Lote 4, Hacienda Sor Juana Inés de la Cruz, Bacalar
         *Google Maps:* https://maps.app.goo.gl/hDcBfHvdxpcbUZCw8
 
     3. If the information does not answer the employee's query, offer an alternative route or transportation.
