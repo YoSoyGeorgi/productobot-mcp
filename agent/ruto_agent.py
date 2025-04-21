@@ -5,7 +5,7 @@ from agents.exceptions import InputGuardrailTripwireTriggered
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
 from tools.RAG import process_user_query
-from tools.get_details import get_details_experience
+from tools.get_details import get_details
 from typing import Optional, Dict, Any, Callable
 import logging
 
