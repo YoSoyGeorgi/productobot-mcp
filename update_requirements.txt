@@ -1,0 +1,13 @@
+openai==1.74.0
+python-dotenv==1.1.0
+slack-bolt==1.23.0
+fastapi==0.115.12
+uvicorn==0.34.1
+gunicorn==21.2.0
+supabase==2.15.0
+requests==2.32.3
+numpy==2.2.4
+pandas==2.2.3
+nest-asyncio==1.6.0
+pydantic>=2.10.0,<3
+openai-agents==0.0.11 
