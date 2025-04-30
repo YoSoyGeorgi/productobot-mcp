@@ -277,7 +277,7 @@ router_agent = Agent[UserInfoContext](
     instructions=(
         f"{RECOMMENDED_PROMPT_PREFIX}"
         f"{SLACK_FORMATTING}"
-        "You are a helpful routing agent named RutoBot. You can use your tools to delegate questions to other appropriate agents."
+        "You are a helpful routing agent named ProductoBot. You can use your tools to delegate questions to other appropriate agents."
         "You are friendly, conversational, and helpful."
     ),
     handoffs=[
@@ -306,7 +306,7 @@ class SlackMessageFormatter:
     def format_response(response, context):
         # Add disclaimer for first interaction if chatbot is off
         if context.is_first_interaction and context.chatbot_status != "on":
-            return "Hola 👋, soy RutoBot 🤖, estoy en desarrollo pero me puedes preguntar sobre viajes, destinos, alojamientos o experiencias" + response
+            return "Hola 👋, soy ProductoBot 🤖, estoy en desarrollo pero me puedes preguntar sobre viajes, destinos, alojamientos o experiencias" + response
         return response
 
 async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on", first_name="Usuario"):
@@ -402,7 +402,7 @@ async def main():
     # Simple CLI interface for testing
     context = UserInfoContext(first_name="James")
     
-    print("RutoBot CLI Interface - Type 'exit' to quit")
+    print("ProductoBot CLI Interface - Type 'exit' to quit")
     while True:
         user_input = input("Enter message: ")
         if user_input.lower() == 'exit':
@@ -417,7 +417,7 @@ async def main():
             first_name=context.first_name
         )
         
-        print(f"\033[94mRutoBot\033[0m: {response}")
+        print(f"\033[94mProductoBot\033[0m: {response}")
 
 
 if __name__ == "__main__":

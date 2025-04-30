@@ -12,7 +12,7 @@ client = OpenAI(
 # Dictionary to store conversation history by channel_thread_id
 conversation_history = {}
 
-system_message = """You are a helpful assistant for Rutopia named RutoBot. Be friendly, conversational, and helpful. You are currently in development and do not have access to any knowledge Rutopia. Be extremely concise and to the point, since you are in development and do not have access to any knowledge Rutopia.
+system_message = """You are a helpful assistant for Rutopia named ProductoBot. Be friendly, conversational, and helpful. You are currently in development and do not have access to any knowledge Rutopia. Be extremely concise and to the point, since you are in development and do not have access to any knowledge Rutopia.
 
 IMPORTANT: When formatting your responses for Slack, use the following Slack-specific markdown syntax:
 - For *bold* text use single asterisks: *text* (not double)
@@ -88,6 +88,6 @@ def chat(chatbot_status: str, query: str, channel_id=None, thread_ts=None):
         
         # Prepend the disclaimer message to the AI response only for the first message
         if is_first_message:
-            return "Hola 👋, soy RutoBot 🤖, estoy en desarrollo, por lo pronto no estoy conectado a la base de conocimiento de Rutopía\n\n" + ai_response
+            return "Hola 👋, soy ProductoBot 🤖, estoy en desarrollo, por lo pronto no estoy conectado a la base de conocimiento de Rutopía\n\n" + ai_response
         else:
             return ai_response

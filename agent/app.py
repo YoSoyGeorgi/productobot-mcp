@@ -128,7 +128,7 @@ def handle_app_home_opened_events(event, client, logger):
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": f"Bienvenido a RutoBot, {user_name} 👋",
+                        "text": f"Bienvenido a ProductoBot, {user_name} 👋",
                         "emoji": True
                     }
                 },
@@ -146,14 +146,14 @@ def handle_app_home_opened_events(event, client, logger):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*RutoBot* es tu asistente virtual para Rutopia."
+                        "text": "*ProductoBot* es tu asistente virtual para Rutopia."
                     }
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "• Puedes preguntarme cualquier cosa sobre Rutopia\n• Mencióname en cualquier canal con `@RutoBot`\n• O envíame mensajes directos"
+                        "text": "• Puedes preguntarme cualquier cosa sobre Rutopia\n• Mencióname en cualquier canal con `@ProductoBot`\n• O envíame mensajes directos"
                     }
                 },
                 {
@@ -169,7 +169,7 @@ def handle_app_home_opened_events(event, client, logger):
             # Open a DM with the user if not already open
             client.chat_postMessage(
                 channel=user_id,
-                text=f"¡Hola <@{user_id}>! Soy RutoBot, tu asistente virtual para Rutopia. Estoy aquí para ayudarte con cualquier pregunta que tengas. No dudes en preguntarme lo que necesites."
+                text=f"¡Hola <@{user_id}>! Soy ProductoBot, tu asistente virtual para Rutopia. Estoy aquí para ayudarte con cualquier pregunta que tengas. No dudes en preguntarme lo que necesites."
             )
         except Exception as e:
             logger.error(f"Error sending welcome message: {e}")
@@ -231,7 +231,7 @@ def handle_message_events(event, client, logger):
         )
 
 # Initialize the FastAPI app
-api = FastAPI(title="RutoBot API")
+api = FastAPI(title="ProductoBot API")
 handler = SlackRequestHandler(app)
 
 logging.basicConfig(level=logging.INFO)
