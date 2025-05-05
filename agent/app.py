@@ -104,6 +104,41 @@ def store_feedback(user_id, channel_id, thread_ts, message_ts, message_text, que
         logging.error(f"Error storing feedback: {e}", exc_info=True)
         return None
 
+# Find the user message that most likely triggered a bot response
+def find_triggering_message(messages, bot_message_ts, bot_id):
+    """
+    Find the most likely user message that triggered a specific bot response.
+    
+    Args:
+        messages: List of messages in the thread
+        bot_message_ts: Timestamp of the bot message that received feedback
+        bot_id: The bot's user ID
+        
+    Returns:
+        The text of the user's query or None if not found
+    """
+    # Sort messages by timestamp
+    sorted_messages = sorted(messages, key=lambda x: float(x.get("ts", "0")))
+    
+    # Find the bot message index
+    bot_msg_index = None
+    for i, msg in enumerate(sorted_messages):
+        if msg.get("ts") == bot_message_ts:
+            bot_msg_index = i
+            break
+    
+    if bot_msg_index is None:
+        return None
+    
+    # Look for the most recent user message before the bot message
+    for i in range(bot_msg_index - 1, -1, -1):
+        msg = sorted_messages[i]
+        # Check if it's a user message (not from the bot)
+        if msg.get("user") != bot_id and not msg.get("bot_id"):
+            return msg.get("text", "")
+    
+    return None
+
 # Handle reaction events
 @app.event("reaction_added")
 def handle_reaction(event, client, logger):
@@ -182,19 +217,16 @@ def handle_reaction(event, client, logger):
                 bot_message_text = message.get("text", "")
                 logger.info(f"Retrieved message via history: {message}")
                     
-            # Get the original user query if available
+            # Get the original user query
             user_query = None
             thread_json = None
             
             if thread_response and thread_response.get("messages"):
                 thread_json = thread_response["messages"]
                 
-                # Find the most recent user message before the bot's response
-                for msg in thread_response["messages"]:
-                    if msg.get("user") != BOT_USER_ID and msg.get("ts") < message_ts:
-                        user_query = msg.get("text", "")
-                        logger.info(f"Found user query: {user_query}")
-                        break
+                # Use the specialized function to find the triggering message
+                user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
+                logger.info(f"Found user query using improved logic: {user_query}")
             
             logger.info(f"Storing feedback - User query: {user_query}, Thread JSON length: {len(thread_json) if thread_json else 0}")
             
