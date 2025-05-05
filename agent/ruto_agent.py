@@ -82,11 +82,14 @@ async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], us
     logger.info(f"get_experiences called with query: {user_query}")
     try:
         logger.info("Calling process_user_query for experiences")
-        formatted_results, search_results = process_user_query(user_query, "experiences")
+        formatted_results, search_results, match_type = process_user_query(user_query, "experiences")
         logger.info(f"Search results count: {len(search_results) if search_results else 0}")
         
         contextWrapper.context.user_query = user_query
-        return formatted_results
+        if match_type == "state":
+            return formatted_results
+        else:
+            return f"No encontré experiencias en la ubicación exacta pero te dejo algunas opciones cercanas: {formatted_results}"
     except Exception as e:
         logger.error(f"Error in get_experiences: {str(e)}", exc_info=True)
         return f"Lo siento, tuve un problema buscando experiencias para '{user_query}'. Error: {str(e)}"
@@ -99,10 +102,13 @@ async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], user_q
     Returns:
         The lodging from the knowledge base.
     """
-    formatted_results, search_results = process_user_query(user_query, "lodging")
+    formatted_results, search_results, match_type = process_user_query(user_query, "lodging")
 
     contextWrapper.context.user_query = user_query
-    return formatted_results
+    if match_type == "state":
+        return formatted_results
+    else:
+        return f"No encontré alojamientos en la ubicación exacta pero te dejo algunas opciones cercanas: {formatted_results}"
 
 @function_tool
 async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
@@ -112,10 +118,13 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     Returns:
         The transportation from the knowledge base.
     """
-    formatted_results, search_results = process_user_query(user_query, "transport")
+    formatted_results, search_results, match_type = process_user_query(user_query, "transport")
 
     contextWrapper.context.user_query = user_query
-    return formatted_results
+    if match_type == "state":
+        return formatted_results
+    else:
+        return f"No encontré transporte en la ubicación exacta pero te dejo algunas opciones cercanas: {formatted_results}"
 
 
 guardrail_agent = Agent( 
