@@ -281,7 +281,7 @@ transportation_agent = Agent[UserInfoContext](
 
 router_agent = Agent[UserInfoContext](
     name="Router Agent",
-    input_guardrails=[trip_planning_guardrail],
+    # input_guardrails=[trip_planning_guardrail],
     handoff_description="A triage agent that can delegate a customer's request to the appropriate agent.",
     instructions=(
         f"{RECOMMENDED_PROMPT_PREFIX}"
