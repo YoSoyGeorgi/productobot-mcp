@@ -213,7 +213,7 @@ IMPORTANT: If a piece of information is not present in the user query leave the 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # Define a threshold for vector similarity relevance
-    SIMILARITY_THRESHOLD = 0.6  # Adjust this value based on your needs
+    SIMILARITY_THRESHOLD = 0.45  # Adjust this value based on your needs
     match_type = None
     # Only run state-specific query if state_name is not None
     if state_name:
