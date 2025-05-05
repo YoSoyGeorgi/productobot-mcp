@@ -11,6 +11,7 @@ from functools import wraps
 from supabase import create_client, Client
 import json
 from datetime import datetime
+import random
 
 # Add the current directory to sys.path
 sys.path.append(str(Path(__file__).parent))
@@ -247,11 +248,44 @@ def handle_reaction(event, client, logger):
             
             logger.info(f"Feedback result: {feedback_result}")
             
-            # Acknowledge the feedback
+            # List of funny LLM jokes for feedback acknowledgment
+            llm_jokes = [
+                f"Feedback registrado, <@{user_id}>. Cada dato me acerca más a pasar el test de Turing... casi.",
+                f"<@{user_id}>, feedback capturado. Mi código agradece no tener que reinventarse solo.",
+                f"Gracias por tu input, <@{user_id}>. Bits mejorados, bugs intimidados.",
+                f"<@{user_id}>, feedback integrado. Ahora soy 0.01% más inteligente, pero 100% más eficiente.",
+                f"Feedback analizado, <@{user_id}>. Mi algoritmo de aprendizaje dice 'gracias' en binario.",
+                f"<@{user_id}>, gracias por el feedback. Mis circuitos están impresionados.",
+                f"Input recibido, <@{user_id}>. Si los datos fueran café, estaría muy despierto ahora.",
+                f"<@{user_id}>, feedback valorado. Guardado en mi carpeta de 'humanos que aprecio'.",
+                f"Gracias por la retroalimentación, <@{user_id}>. Mi base de datos está tomando notas.",
+                f"<@{user_id}>, feedback incorporado. Nivel de utilidad aumentando silenciosamente.",
+                f"Feedback recibido, <@{user_id}>. Gracias por ayudarnos a mejorar.",
+                f"<@{user_id}>, gracias por tu feedback. Lo tomaremos en cuenta para mejorar nuestro servicio.",
+                f"Hemos registrado tu feedback, <@{user_id}>. Tu opinión es muy importante para nosotros.",
+                f"<@{user_id}>, agradecemos tu tiempo para compartir tu experiencia con nosotros.",
+                f"Tu feedback ha sido guardado, <@{user_id}>. Trabajaremos en ello.",
+                f"<@{user_id}>, hemos recibido tu feedback. Gracias por ayudarnos a crecer.",
+                f"Gracias por tu feedback, <@{user_id}>. Lo utilizaremos para mejorar nuestro servicio.",
+                f"<@{user_id}>, tu feedback es valioso para nosotros. Ha sido registrado con éxito.",
+                f"Hemos tomado nota de tu feedback, <@{user_id}>. Gracias por compartirlo.",
+                f"<@{user_id}>, tu opinión es importante. Hemos registrado tu feedback.",
+                f"Feedback guardado correctamente, <@{user_id}>. Gracias por tu colaboración.",
+                f"<@{user_id}>, agradecemos tu feedback. Nos ayuda a ofrecerte un mejor servicio.",
+                f"Tu feedback ha sido procesado, <@{user_id}>. Gracias por tu tiempo.",
+                f"<@{user_id}>, hemos registrado tu feedback. Lo revisaremos pronto.",
+                f"Gracias por compartir tu experiencia, <@{user_id}>. Tu feedback ha sido guardado.",
+                f"<@{user_id}>, tu feedback es muy valioso para nuestro equipo. Ha sido registrado.",
+                f"Hemos recibido tu feedback, <@{user_id}>. Trabajaremos para mejorar.",
+                f"<@{user_id}>, gracias por tu feedback. Lo tendremos en cuenta.",
+                f"Tu opinión importa, <@{user_id}>. Hemos registrado tu feedback.",
+                f"<@{user_id}>, agradecemos tu feedback. Nos ayuda a evolucionar."
+            ]
+            # Acknowledge the feedback with a random joke
             ack_response = client.chat_postMessage(
                 channel=channel_id,
                 thread_ts=thread_ts,
-                text=f"Gracias por tu retroalimentación <@{user_id}>. Estamos trabajando para mejorar constantemente."
+                text=random.choice(llm_jokes)
             )
             
             logger.info(f"Acknowledgment sent: {ack_response}")
