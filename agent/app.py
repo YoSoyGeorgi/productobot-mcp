@@ -8,6 +8,9 @@ import sys
 import asyncio
 from pathlib import Path
 from functools import wraps
+from supabase import create_client, Client
+import json
+from datetime import datetime
 
 # Add the current directory to sys.path
 sys.path.append(str(Path(__file__).parent))
@@ -23,6 +26,27 @@ app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
+
+# Initialize Supabase client
+supabase: Client = create_client(
+    os.environ.get("SUPABASE_URL"),
+    os.environ.get("SUPABASE_KEY")
+)
+
+# Store bot user ID
+BOT_USER_ID = None
+
+# Get bot's own ID on startup
+@app.event("ready")
+def get_bot_id(client):
+    global BOT_USER_ID
+    try:
+        # Get bot's own identity
+        auth_response = client.auth_test()
+        BOT_USER_ID = auth_response["user_id"]
+        logging.info(f"Bot initialized with ID: {BOT_USER_ID}")
+    except Exception as e:
+        logging.error(f"Error getting bot ID: {e}")
 
 # Helper function to get user info
 def get_user_info(client, user_id):
@@ -63,6 +87,103 @@ def run_async(func):
 @run_async
 async def sync_chat(**kwargs):
     return await chat(**kwargs)
+
+# Store feedback in Supabase
+def store_feedback(user_id, channel_id, thread_ts, message_ts, message_text, query_text=None, thread_json=None):
+    try:
+        feedback_data = {
+            "user_id": user_id,
+            "channel_id": channel_id,
+            "thread_ts": thread_ts,
+            "message_ts": message_ts,
+            "bot_response": message_text,
+            "user_query": query_text,
+            "thread_json": thread_json,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table("feedback").insert(feedback_data).execute()
+        logging.info(f"Feedback stored: {result}")
+        return result
+    except Exception as e:
+        logging.error(f"Error storing feedback: {e}", exc_info=True)
+        return None
+
+# Handle reaction events
+@app.event("reaction_added")
+def handle_reaction(event, client, logger):
+    # Check if the reaction is "x"
+    if event.get("reaction") != "x":
+        return
+    
+    try:
+        # Get the message that was reacted to
+        channel_id = event.get("item", {}).get("channel")
+        message_ts = event.get("item", {}).get("ts")
+        user_id = event.get("user")
+        
+        # Get message details
+        message_response = client.conversations_history(
+            channel=channel_id,
+            latest=message_ts,
+            inclusive=True,
+            limit=1
+        )
+        
+        if not message_response.get("messages"):
+            logger.warning("No message found for the reaction")
+            return
+            
+        message = message_response["messages"][0]
+        
+        # Check if the message is from our bot
+        if message.get("bot_id") and message.get("user") == BOT_USER_ID:
+            # This is a message from our bot that received an X reaction
+            bot_message_text = message.get("text", "")
+            thread_ts = message.get("thread_ts", message_ts)
+            
+            # Get the original user query if available
+            user_query = None
+            thread_json = None
+            
+            if thread_ts:
+                # Get the full thread history
+                thread_response = client.conversations_replies(
+                    channel=channel_id,
+                    ts=thread_ts,
+                    limit=100  # Increased to capture more of the thread
+                )
+                
+                # Store the full thread as JSON
+                if thread_response.get("messages"):
+                    thread_json = thread_response["messages"]
+                    
+                    # Find the most recent user message before the bot's response
+                    for msg in thread_response["messages"]:
+                        if not msg.get("bot_id") and msg.get("ts") < message_ts:
+                            user_query = msg.get("text", "")
+                            break
+            
+            # Store feedback in Supabase
+            store_feedback(
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                message_ts=message_ts,
+                message_text=bot_message_text,
+                query_text=user_query,
+                thread_json=thread_json
+            )
+            
+            # Acknowledge the feedback
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=f"Gracias por tu retroalimentación <@{user_id}>. Estamos trabajando para mejorar constantemente."
+            )
+            
+    except Exception as e:
+        logger.error(f"Error processing reaction: {e}", exc_info=True)
 
 # Event handlers
 @app.event("app_mention")
@@ -180,10 +301,18 @@ def handle_message_events(event, client, logger):
     if event.get("bot_id") or event.get("subtype") == "bot_message":
         return
 
-    # Only process direct messages (IM) or messages in a thread where the bot was previously mentioned
+    # Process direct messages (IM) always
     channel_type = event.get("channel_type")
-    if channel_type != "im" and not event.get("thread_ts"):
-        return
+    
+    # For messages in threads or channels, only process if the bot is explicitly mentioned
+    if channel_type != "im":
+        # Check if the message has a mention of the bot
+        message_text = event.get("text", "")
+        bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
+        
+        # If bot ID is not set or the bot is not mentioned in the message, ignore it
+        if not bot_mention or bot_mention not in message_text:
+            return
 
     # Get user info
     user_id = event.get("user")
