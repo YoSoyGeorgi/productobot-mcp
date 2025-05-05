@@ -33,20 +33,15 @@ supabase: Client = create_client(
     os.environ.get("SUPABASE_KEY")
 )
 
-# Store bot user ID
+# Store bot user ID - initialize immediately instead of waiting for event
 BOT_USER_ID = None
-
-# Get bot's own ID on startup
-@app.event("ready")
-def get_bot_id(client):
-    global BOT_USER_ID
-    try:
-        # Get bot's own identity
-        auth_response = client.auth_test()
-        BOT_USER_ID = auth_response["user_id"]
-        logging.info(f"Bot initialized with ID: {BOT_USER_ID}")
-    except Exception as e:
-        logging.error(f"Error getting bot ID: {e}")
+try:
+    # Get bot's own identity at startup
+    auth_response = app.client.auth_test()
+    BOT_USER_ID = auth_response["user_id"]
+    logging.info(f"Bot initialized with ID: {BOT_USER_ID}")
+except Exception as e:
+    logging.error(f"Error getting bot ID: {e}")
 
 # Helper function to get user info
 def get_user_info(client, user_id):
@@ -131,55 +126,75 @@ def handle_reaction(event, client, logger):
         logger.info(f"Reaction details - channel: {channel_id}, ts: {message_ts}, user: {user_id}")
         logger.info(f"Bot ID: {BOT_USER_ID}")
         
-        # Get message details
-        message_response = client.conversations_history(
-            channel=channel_id,
-            latest=message_ts,
-            inclusive=True,
-            limit=1
-        )
+        # Check if the message is from our bot using item_user from the event
+        item_user = event.get("item_user")
+        logger.info(f"Item user ID: {item_user}")
         
-        logger.info(f"Message response: {message_response}")
-        
-        if not message_response.get("messages"):
-            logger.warning("No message found for the reaction")
-            return
+        if item_user == BOT_USER_ID:
+            logger.info("Message is from our bot based on item_user, proceeding with feedback")
             
-        message = message_response["messages"][0]
-        logger.info(f"Retrieved message: {message}")
-        
-        # Check if the message is from our bot
-        logger.info(f"Message bot_id: {message.get('bot_id')}, user: {message.get('user')}")
-        
-        if message.get("bot_id") and message.get("user") == BOT_USER_ID:
-            logger.info("Message is from our bot, proceeding with feedback")
-            # This is a message from our bot that received an X reaction
-            bot_message_text = message.get("text", "")
-            thread_ts = message.get("thread_ts", message_ts)
-            
+            # Get the exact message using conversations.replies instead of history
+            thread_response = None
+            try:
+                # First, try to get the message directly using conversations.replies if it's in a thread
+                thread_ts = None
+                message_response = client.conversations_replies(
+                    channel=channel_id,
+                    ts=message_ts,
+                    limit=1
+                )
+                
+                if message_response.get("messages"):
+                    message = message_response["messages"][0]
+                    thread_ts = message.get("thread_ts", message_ts)
+                    bot_message_text = message.get("text", "")
+                    logger.info(f"Retrieved exact message: {message}")
+                    
+                    # Now get the full thread
+                    if thread_ts:
+                        thread_response = client.conversations_replies(
+                            channel=channel_id,
+                            ts=thread_ts,
+                            limit=100
+                        )
+                        logger.info(f"Thread response count: {len(thread_response.get('messages', []))}")
+                    else:
+                        thread_response = message_response
+                else:
+                    logger.warning("No message found in replies")
+                    return
+            except Exception as e:
+                logger.error(f"Error getting message via replies: {e}")
+                # Fallback to conversations_history
+                message_response = client.conversations_history(
+                    channel=channel_id,
+                    latest=message_ts,
+                    inclusive=True,
+                    limit=1
+                )
+                
+                if not message_response.get("messages"):
+                    logger.warning("No message found for the reaction")
+                    return
+                    
+                message = message_response["messages"][0]
+                thread_ts = message.get("thread_ts", message_ts)
+                bot_message_text = message.get("text", "")
+                logger.info(f"Retrieved message via history: {message}")
+                    
             # Get the original user query if available
             user_query = None
             thread_json = None
             
-            if thread_ts:
-                # Get the full thread history
-                thread_response = client.conversations_replies(
-                    channel=channel_id,
-                    ts=thread_ts,
-                    limit=100  # Increased to capture more of the thread
-                )
+            if thread_response and thread_response.get("messages"):
+                thread_json = thread_response["messages"]
                 
-                logger.info(f"Thread response: {thread_response}")
-                
-                # Store the full thread as JSON
-                if thread_response.get("messages"):
-                    thread_json = thread_response["messages"]
-                    
-                    # Find the most recent user message before the bot's response
-                    for msg in thread_response["messages"]:
-                        if not msg.get("bot_id") and msg.get("ts") < message_ts:
-                            user_query = msg.get("text", "")
-                            break
+                # Find the most recent user message before the bot's response
+                for msg in thread_response["messages"]:
+                    if msg.get("user") != BOT_USER_ID and msg.get("ts") < message_ts:
+                        user_query = msg.get("text", "")
+                        logger.info(f"Found user query: {user_query}")
+                        break
             
             logger.info(f"Storing feedback - User query: {user_query}, Thread JSON length: {len(thread_json) if thread_json else 0}")
             
