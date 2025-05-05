@@ -112,15 +112,24 @@ def store_feedback(user_id, channel_id, thread_ts, message_ts, message_text, que
 # Handle reaction events
 @app.event("reaction_added")
 def handle_reaction(event, client, logger):
+    # Add detailed logging for debugging
+    logger.info(f"Received reaction event: {event}")
+    
     # Check if the reaction is "x"
     if event.get("reaction") != "x":
+        logger.info(f"Ignoring non-x reaction: {event.get('reaction')}")
         return
+    
+    logger.info("Processing 'x' reaction")
     
     try:
         # Get the message that was reacted to
         channel_id = event.get("item", {}).get("channel")
         message_ts = event.get("item", {}).get("ts")
         user_id = event.get("user")
+        
+        logger.info(f"Reaction details - channel: {channel_id}, ts: {message_ts}, user: {user_id}")
+        logger.info(f"Bot ID: {BOT_USER_ID}")
         
         # Get message details
         message_response = client.conversations_history(
@@ -130,14 +139,20 @@ def handle_reaction(event, client, logger):
             limit=1
         )
         
+        logger.info(f"Message response: {message_response}")
+        
         if not message_response.get("messages"):
             logger.warning("No message found for the reaction")
             return
             
         message = message_response["messages"][0]
+        logger.info(f"Retrieved message: {message}")
         
         # Check if the message is from our bot
+        logger.info(f"Message bot_id: {message.get('bot_id')}, user: {message.get('user')}")
+        
         if message.get("bot_id") and message.get("user") == BOT_USER_ID:
+            logger.info("Message is from our bot, proceeding with feedback")
             # This is a message from our bot that received an X reaction
             bot_message_text = message.get("text", "")
             thread_ts = message.get("thread_ts", message_ts)
@@ -154,6 +169,8 @@ def handle_reaction(event, client, logger):
                     limit=100  # Increased to capture more of the thread
                 )
                 
+                logger.info(f"Thread response: {thread_response}")
+                
                 # Store the full thread as JSON
                 if thread_response.get("messages"):
                     thread_json = thread_response["messages"]
@@ -164,8 +181,14 @@ def handle_reaction(event, client, logger):
                             user_query = msg.get("text", "")
                             break
             
+            logger.info(f"Storing feedback - User query: {user_query}, Thread JSON length: {len(thread_json) if thread_json else 0}")
+            
+            # Check if Supabase variables are set
+            logger.info(f"Supabase URL set: {'Yes' if os.environ.get('SUPABASE_URL') else 'No'}")
+            logger.info(f"Supabase Key set: {'Yes' if os.environ.get('SUPABASE_KEY') else 'No'}")
+            
             # Store feedback in Supabase
-            store_feedback(
+            feedback_result = store_feedback(
                 user_id=user_id,
                 channel_id=channel_id,
                 thread_ts=thread_ts,
@@ -175,12 +198,18 @@ def handle_reaction(event, client, logger):
                 thread_json=thread_json
             )
             
+            logger.info(f"Feedback result: {feedback_result}")
+            
             # Acknowledge the feedback
-            client.chat_postMessage(
+            ack_response = client.chat_postMessage(
                 channel=channel_id,
                 thread_ts=thread_ts,
                 text=f"Gracias por tu retroalimentación <@{user_id}>. Estamos trabajando para mejorar constantemente."
             )
+            
+            logger.info(f"Acknowledgment sent: {ack_response}")
+        else:
+            logger.info("Message is not from our bot, ignoring")
             
     except Exception as e:
         logger.error(f"Error processing reaction: {e}", exc_info=True)
