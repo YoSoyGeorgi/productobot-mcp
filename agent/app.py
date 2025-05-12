@@ -12,6 +12,7 @@ from supabase import create_client, Client
 import json
 from datetime import datetime
 import random
+import re
 
 # Add the current directory to sys.path
 sys.path.append(str(Path(__file__).parent))
@@ -432,18 +433,44 @@ def handle_message_events(event, client, logger):
     if event.get("bot_id") or event.get("subtype") == "bot_message":
         return
 
-    # Process direct messages (IM) always
-    channel_type = event.get("channel_type")
+    # Get the message text
+    message_text = event.get("text", "")
     
-    # For messages in threads or channels, only process if the bot is explicitly mentioned
-    if channel_type != "im":
-        # Check if the message has a mention of the bot
-        message_text = event.get("text", "")
-        bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
+    # Get channel type and check if in a thread
+    channel_type = event.get("channel_type")
+    is_in_thread = event.get("thread_ts") is not None
+    
+    # Process direct messages (IM) always
+    should_process = channel_type == "im"
+    
+    # Check for bot mentions
+    bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
+    is_bot_mentioned = bot_mention and bot_mention in message_text
+    
+    # For messages in threads, process if no other users are mentioned (except the bot)
+    if is_in_thread and not should_process and not is_bot_mentioned:
+        # Check if message mentions any users other than the bot
+        mentions_other_user = False
         
-        # If bot ID is not set or the bot is not mentioned in the message, ignore it
-        if not bot_mention or bot_mention not in message_text:
-            return
+        # Look for user mentions pattern <@U...>
+        mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
+        
+        # If there are mentions and any mention is not the bot, skip this message
+        if mentions:
+            for mention in mentions:
+                if mention != BOT_USER_ID:
+                    mentions_other_user = True
+                    break
+        
+        # Process if in thread and doesn't mention other users
+        should_process = not mentions_other_user
+    # For messages in channels (not in thread), only process if bot is mentioned
+    elif not is_in_thread and not should_process:
+        should_process = is_bot_mentioned
+    
+    # If we shouldn't process this message, return
+    if not should_process:
+        return
 
     # Get user info
     user_id = event.get("user")
