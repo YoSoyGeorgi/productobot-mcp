@@ -147,12 +147,13 @@ def handle_reaction(event, client, logger):
     # Add detailed logging for debugging
     logger.info(f"Received reaction event: {event}")
     
-    # Check if the reaction is "x"
-    if event.get("reaction") != "x":
-        logger.info(f"Ignoring non-x reaction: {event.get('reaction')}")
+    # Check if the reaction is "x" (which represents ❌)
+    reaction = event.get("reaction", "")
+    if reaction != "x" and reaction != "cross_mark":
+        logger.info(f"Ignoring non-x reaction: {reaction}")
         return
     
-    logger.info("Processing 'x' reaction")
+    logger.info(f"Processing '{reaction}' reaction")
     
     try:
         # Get the message that was reacted to
@@ -293,13 +294,22 @@ def handle_reaction(event, client, logger):
             
             # Remove the "x" emoji and add "🤗" emoji
             try:
-                # Remove the "x" reaction
-                client.reactions_remove(
-                    channel=channel_id,
-                    timestamp=message_ts,
-                    name="x"
-                )
-                logger.info(f"Removed 'x' reaction from message")
+                # Remove the "x" reaction - use the same reaction name that was detected
+                try:
+                    client.reactions_remove(
+                        channel=channel_id,
+                        timestamp=message_ts,
+                        name=reaction  # Use the actual reaction name from the event
+                    )
+                    logger.info(f"Removed '{reaction}' reaction from message")
+                except Exception as reaction_error:
+                    # Check if this is a "no_reaction" error, which is not critical
+                    error_message = str(reaction_error)
+                    if "no_reaction" in error_message:
+                        logger.info(f"The '{reaction}' reaction was already removed: {error_message}")
+                    else:
+                        logger.error(f"Error removing '{reaction}' reaction: {reaction_error}")
+                    # Continue execution to add the hugging face emoji
                 
                 # Add the "🤗" reaction
                 client.reactions_add(
