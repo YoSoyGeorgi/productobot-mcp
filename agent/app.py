@@ -289,6 +289,27 @@ def handle_reaction(event, client, logger):
             )
             
             logger.info(f"Acknowledgment sent: {ack_response}")
+            
+            # Remove the "x" emoji and add "🤗" emoji
+            try:
+                # Remove the "x" reaction
+                client.reactions_remove(
+                    channel=channel_id,
+                    timestamp=message_ts,
+                    name="x"
+                )
+                logger.info(f"Removed 'x' reaction from message")
+                
+                # Add the "🤗" reaction
+                client.reactions_add(
+                    channel=channel_id,
+                    timestamp=message_ts,
+                    name="hugging_face"
+                )
+                logger.info(f"Added '🤗' reaction to message")
+            except Exception as e:
+                logger.error(f"Error updating reactions: {e}", exc_info=True)
+                
         else:
             logger.info("Message is not from our bot, ignoring")
             
