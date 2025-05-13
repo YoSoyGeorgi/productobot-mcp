@@ -447,37 +447,56 @@ def handle_message_events(event, client, logger):
     message_text = event.get("text", "")
     
     # Get channel type and check if in a thread
+    channel_id = event.get("channel")
     channel_type = event.get("channel_type")
-    is_in_thread = event.get("thread_ts") is not None
+    thread_ts = event.get("thread_ts")
+    message_ts = event.get("ts")
     
     # Process direct messages (IM) always
     should_process = channel_type == "im"
     
-    # Check for bot mentions
+    # Check for bot mentions in the current message
     bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
-    is_bot_mentioned = bot_mention and bot_mention in message_text
+    is_bot_mentioned_in_current = bot_mention and bot_mention in message_text
     
-    # For messages in threads, process if no other users are mentioned (except the bot)
-    if is_in_thread and not should_process and not is_bot_mentioned:
-        # Check if message mentions any users other than the bot
-        mentions_other_user = False
-        
-        # Look for user mentions pattern <@U...>
-        mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
-        
-        # If there are mentions and any mention is not the bot, skip this message
-        if mentions:
-            for mention in mentions:
-                if mention != BOT_USER_ID:
-                    mentions_other_user = True
-                    break
-        
-        # Process if in thread and doesn't mention other users
-        should_process = not mentions_other_user
-    # For messages in channels (not in thread), only process if bot is mentioned
-    elif not is_in_thread and not should_process:
-        should_process = is_bot_mentioned
-    
+    # If it's a message in a thread (not the first message)
+    if thread_ts and thread_ts != message_ts and not should_process:
+        try:
+            # Fetch the thread messages
+            thread_replies = client.conversations_replies(channel=channel_id, ts=thread_ts)
+            messages = thread_replies.get("messages", [])
+            
+            if messages:
+                first_message = messages[0]
+                first_message_text = first_message.get("text", "")
+                
+                # Check if the bot was mentioned in the first message
+                is_bot_mentioned_in_first = bot_mention and bot_mention in first_message_text
+                
+                if is_bot_mentioned_in_first:
+                    # Check if the current message mentions any users other than the bot
+                    mentions_other_user = False
+                    mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
+                    if mentions:
+                        for mention in mentions:
+                            if mention != BOT_USER_ID:
+                                mentions_other_user = True
+                                break
+                    
+                    # Process if the first message mentioned the bot AND the current message doesn't mention others
+                    if not mentions_other_user:
+                        should_process = True
+                        
+        except Exception as e:
+            logger.error(f"Error checking thread history: {e}")
+
+    # If it's the first message in a channel/thread OR a DM, check for direct mention
+    elif not thread_ts and not should_process: # Process non-threaded channel messages only if bot is mentioned
+        should_process = is_bot_mentioned_in_current
+    elif thread_ts == message_ts and not should_process: # Process the *first* message of a thread only if bot is mentioned
+         should_process = is_bot_mentioned_in_current
+
+
     # If we shouldn't process this message, return
     if not should_process:
         return
