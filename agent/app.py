@@ -442,7 +442,13 @@ def handle_message_events(event, client, logger):
     # Ignore messages from bots to prevent potential loops
     if event.get("bot_id") or event.get("subtype") == "bot_message":
         return
-
+    
+    # Log channel type for debugging
+    channel_type = event.get("channel_type")
+    channel_id = event.get("channel")
+    logger.info(f"Received message in channel type: {channel_type}, channel ID: {channel_id}")
+    
+    # For private groups (channel_type=group), we need to make sure the bot is responding
     # Get user info
     user_id = event.get("user")
     user_info = get_user_info(client, user_id)
@@ -451,11 +457,14 @@ def handle_message_events(event, client, logger):
     thread_ts = event.get('thread_ts', event['ts'])
     
     # React to show the bot is processing
-    client.reactions_add(
-        channel=event['channel'],
-        timestamp=event['ts'],
-        name='eyes'
-    )
+    try:
+        client.reactions_add(
+            channel=event['channel'],
+            timestamp=event['ts'],
+            name='eyes'
+        )
+    except Exception as e:
+        logger.error(f"Error adding reaction: {e}")
     
     try:
         # Process the message with the chat function
@@ -473,20 +482,27 @@ def handle_message_events(event, client, logger):
             thread_ts=thread_ts,
             text=response
         )
+        logger.info(f"Successfully sent response to channel {channel_id} with type {channel_type}")
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
-        client.chat_postMessage(
-            channel=event['channel'],
-            thread_ts=thread_ts,
-            text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
-        )
+        try:
+            client.chat_postMessage(
+                channel=event['channel'],
+                thread_ts=thread_ts,
+                text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+            )
+        except Exception as chat_error:
+            logger.error(f"Error sending error message: {chat_error}", exc_info=True)
     finally:
         # Remove the reaction
-        client.reactions_remove(
-            channel=event['channel'],
-            timestamp=event['ts'],
-            name='eyes'
-        )
+        try:
+            client.reactions_remove(
+                channel=event['channel'],
+                timestamp=event['ts'],
+                name='eyes'
+            )
+        except Exception as e:
+            logger.error(f"Error removing reaction: {e}")
 
 # Initialize the FastAPI app
 api = FastAPI(title="ProductoBot API")
