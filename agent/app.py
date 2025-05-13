@@ -18,7 +18,7 @@ import re
 sys.path.append(str(Path(__file__).parent))
 
 # Direct import - no try/except needed
-from ruto_agent import chat
+from ruto_agent import chat, conversation_history
 
 # Load environment variables
 load_dotenv()
@@ -442,13 +442,62 @@ def handle_message_events(event, client, logger):
     # Ignore messages from bots to prevent potential loops
     if event.get("bot_id") or event.get("subtype") == "bot_message":
         return
+
+    # Get the message text
+    message_text = event.get("text", "")
     
-    # Log channel type for debugging
+    # Get channel type and check if in a thread
     channel_type = event.get("channel_type")
-    channel_id = event.get("channel")
-    logger.info(f"Received message in channel type: {channel_type}, channel ID: {channel_id}")
+    is_in_thread = event.get("thread_ts") is not None
+    thread_ts = event.get('thread_ts')
     
-    # For private groups (channel_type=group), we need to make sure the bot is responding
+    # Process direct messages (IM) always
+    should_process = channel_type == "im"
+    
+    # Check for bot mentions
+    bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
+    is_bot_mentioned = bot_mention and bot_mention in message_text
+    
+    # Track threads where the bot has been tagged to respond without tagging again
+    # Create a unique thread identifier
+    thread_id = f"{event['channel']}_{thread_ts}" if is_in_thread and thread_ts else None
+    
+    # For messages in threads, process if no other users are mentioned (except the bot)
+    if is_in_thread and not should_process:
+        # Check if message mentions any users other than the bot
+        mentions_other_user = False
+        
+        # Look for user mentions pattern <@U...>
+        mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
+        
+        # If there are mentions and any mention is not the bot, skip this message
+        if mentions:
+            for mention in mentions:
+                if mention != BOT_USER_ID:
+                    mentions_other_user = True
+                    break
+            
+            # If bot is explicitly mentioned, we should process regardless of other mentions
+            if is_bot_mentioned:
+                should_process = True
+            else:
+                should_process = not mentions_other_user
+        else:
+            # No mentions in the message
+            # Check if this is a thread where the bot was previously mentioned
+            if thread_id and thread_id in conversation_history:
+                should_process = True
+            # If bot not explicitly mentioned and no history, don't process
+            else:
+                should_process = False
+    # For messages in channels (not in thread), only process if bot is mentioned
+    elif not is_in_thread and not should_process:
+        should_process = is_bot_mentioned
+    
+    # If we shouldn't process this message, return
+    if not should_process:
+        return
+
     # Get user info
     user_id = event.get("user")
     user_info = get_user_info(client, user_id)
@@ -457,14 +506,11 @@ def handle_message_events(event, client, logger):
     thread_ts = event.get('thread_ts', event['ts'])
     
     # React to show the bot is processing
-    try:
-        client.reactions_add(
-            channel=event['channel'],
-            timestamp=event['ts'],
-            name='eyes'
-        )
-    except Exception as e:
-        logger.error(f"Error adding reaction: {e}")
+    client.reactions_add(
+        channel=event['channel'],
+        timestamp=event['ts'],
+        name='eyes'
+    )
     
     try:
         # Process the message with the chat function
@@ -482,27 +528,20 @@ def handle_message_events(event, client, logger):
             thread_ts=thread_ts,
             text=response
         )
-        logger.info(f"Successfully sent response to channel {channel_id} with type {channel_type}")
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
-        try:
-            client.chat_postMessage(
-                channel=event['channel'],
-                thread_ts=thread_ts,
-                text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
-            )
-        except Exception as chat_error:
-            logger.error(f"Error sending error message: {chat_error}", exc_info=True)
+        client.chat_postMessage(
+            channel=event['channel'],
+            thread_ts=thread_ts,
+            text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+        )
     finally:
         # Remove the reaction
-        try:
-            client.reactions_remove(
-                channel=event['channel'],
-                timestamp=event['ts'],
-                name='eyes'
-            )
-        except Exception as e:
-            logger.error(f"Error removing reaction: {e}")
+        client.reactions_remove(
+            channel=event['channel'],
+            timestamp=event['ts'],
+            name='eyes'
+        )
 
 # Initialize the FastAPI app
 api = FastAPI(title="ProductoBot API")

@@ -32,6 +32,9 @@ class TripPlanningGuardrailOutput(BaseModel):
     is_trip_planning: bool
     reasoning: str
 
+# Export conversation_history to be used by app.py
+__all__ = ["chat", "conversation_history"]
+
 # Slack formatting instructions for agents
 SLACK_FORMATTING = """
 IMPORTANT: When formatting your responses for Slack, use the following Slack-specific markdown syntax:
