@@ -439,8 +439,12 @@ def handle_app_home_opened_events(event, client, logger):
 
 @app.event("message")
 def handle_message_events(event, client, logger):
+    # Log all incoming message events to diagnose
+    logger.info(f"DIAGNOSTIC: Received 'message' event: {json.dumps(event)}")
+
     # Ignore messages from bots to prevent potential loops
     if event.get("bot_id") or event.get("subtype") == "bot_message":
+        logger.info(f"DIAGNOSTIC: Ignoring bot message")
         return
 
     # Get the message text
@@ -453,56 +457,73 @@ def handle_message_events(event, client, logger):
     message_ts = event.get("ts")
     
     # Debug: log when handle_message_events is invoked and show key variables
-    logger.info(f'handle_message_events triggered - channel={channel_id}, channel_type={channel_type}, thread_ts={thread_ts}, message_ts={message_ts}, text="{message_text}"')
+    logger.info(f'DIAGNOSTIC: handle_message_events triggered - channel={channel_id}, channel_type={channel_type}, thread_ts={thread_ts}, message_ts={message_ts}, text="{message_text}"')
+    logger.info(f'DIAGNOSTIC: BOT_USER_ID={BOT_USER_ID}')
     
     # Process direct messages (IM) always
     should_process = channel_type == "im"
+    logger.info(f'DIAGNOSTIC: Initial should_process (DM check): {should_process}')
     
     # Check for bot mentions in the current message
     bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
     is_bot_mentioned_in_current = bot_mention and bot_mention in message_text
+    logger.info(f'DIAGNOSTIC: is_bot_mentioned_in_current: {is_bot_mentioned_in_current}')
     
     # If it's a message in a thread (not the first message)
     if thread_ts and thread_ts != message_ts and not should_process:
+        logger.info(f'DIAGNOSTIC: Processing thread message that is not the first message')
         try:
             # Check if the bot is a member of the channel and join if not
             try:
                 channel_info = client.conversations_info(channel=channel_id)
+                logger.info(f'DIAGNOSTIC: Channel info: {json.dumps(channel_info)}')
                 if not channel_info.get("channel", {}).get("is_member", True):
-                    logger.info(f"Bot is not a member of channel {channel_id}, joining now")
-                    client.conversations_join(channel=channel_id)
+                    logger.info(f"DIAGNOSTIC: Bot is not a member of channel {channel_id}, joining now")
+                    join_response = client.conversations_join(channel=channel_id)
+                    logger.info(f'DIAGNOSTIC: Join response: {json.dumps(join_response)}')
+                else:
+                    logger.info(f"DIAGNOSTIC: Bot is already a member of channel {channel_id}")
             except Exception as channel_error:
-                logger.error(f"Error checking/joining channel: {channel_error}")
+                logger.error(f"DIAGNOSTIC: Error checking/joining channel: {channel_error}", exc_info=True)
             
             # Simplified thread handling: Always respond to any thread message
             # Only check if there are mentions to other users
             mentions_other_user = False
             mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
+            logger.info(f'DIAGNOSTIC: Mentions found in message: {mentions}')
             if mentions:
                 for mention in mentions:
                     if mention != BOT_USER_ID:
                         mentions_other_user = True
+                        logger.info(f'DIAGNOSTIC: Message mentions another user: {mention}')
                         break
             
             # Process the message if no other users are mentioned
             if not mentions_other_user:
                 should_process = True
-                logger.info(f"Thread message received with no other mentions - will process")
+                logger.info(f"DIAGNOSTIC: Thread message with no other mentions - will process")
+            else:
+                logger.info(f"DIAGNOSTIC: Thread message mentions others - will NOT process")
                 
         except Exception as e:
-            logger.error(f"Error checking thread: {e}", exc_info=True)
+            logger.error(f"DIAGNOSTIC: Error checking thread: {e}", exc_info=True)
 
     # If it's the first message in a channel/thread OR a DM, check for direct mention
     elif not thread_ts and not should_process: # Process non-threaded channel messages only if bot is mentioned
+        logger.info(f'DIAGNOSTIC: Processing non-threaded message')
         should_process = is_bot_mentioned_in_current
+        logger.info(f'DIAGNOSTIC: Non-threaded message should_process: {should_process}')
     elif thread_ts == message_ts and not should_process: # Process the *first* message of a thread only if bot is mentioned
-         should_process = is_bot_mentioned_in_current
+        logger.info(f'DIAGNOSTIC: Processing first message of thread')
+        should_process = is_bot_mentioned_in_current
+        logger.info(f'DIAGNOSTIC: First message of thread should_process: {should_process}')
 
     # Debug: log final decision whether to process the message
-    logger.info(f'handle_message_events - final should_process={should_process}')
-
+    logger.info(f'DIAGNOSTIC: FINAL should_process={should_process}')
+    
     # If we shouldn't process this message, return
     if not should_process:
+        logger.info(f'DIAGNOSTIC: Not processing message - exiting handler')
         return
 
     # Get user info
