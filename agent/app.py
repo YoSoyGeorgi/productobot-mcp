@@ -47,6 +47,99 @@ def handle_all_messages(message, client, logger):
     logger.info(f"CATCH-ALL: Received message event: {json.dumps(message)}")
     # This is just a catch-all; the specific handler will still process appropriate messages
 
+# Add a direct listener for thread responses
+@app.event({"type": "message", "subtype": None})
+def handle_thread_replies(event, client, logger):
+    # This explicitly handles thread replies (messages with thread_ts but no subtype)
+    if "thread_ts" in event and event.get("ts") != event.get("thread_ts"):
+        logger.info(f"THREAD-REPLY: Received thread reply: {json.dumps(event)}")
+        
+        # Skip bot messages
+        if event.get("bot_id") or event.get("subtype") == "bot_message":
+            logger.info(f"THREAD-REPLY: Ignoring bot message in thread")
+            return
+            
+        # Get thread timestamp and channel
+        thread_ts = event.get("thread_ts")
+        channel_id = event.get("channel")
+        
+        try:
+            # Fetch thread messages to check first message
+            thread_replies = client.conversations_replies(
+                channel=channel_id,
+                ts=thread_ts,
+                limit=1  # Just get the first message
+            )
+            
+            if thread_replies.get("messages"):
+                first_message = thread_replies["messages"][0]
+                first_message_text = first_message.get("text", "")
+                
+                # Check if bot was mentioned in first message
+                bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
+                if bot_mention and bot_mention in first_message_text:
+                    # Check if current message mentions anyone else
+                    mentions_other_user = False
+                    mentions = re.findall(r"<@(U[A-Z0-9]+)>", event.get("text", ""))
+                    if mentions:
+                        for mention in mentions:
+                            if mention != BOT_USER_ID:
+                                mentions_other_user = True
+                                break
+                    
+                    # Process message if no other mentions
+                    if not mentions_other_user:
+                        logger.info(f"THREAD-REPLY: Processing eligible thread reply")
+                        
+                        # Get user info
+                        user_id = event.get("user")
+                        user_info = get_user_info(client, user_id)
+                        
+                        # React to show processing
+                        client.reactions_add(
+                            channel=channel_id,
+                            timestamp=event.get("ts"),
+                            name='eyes'
+                        )
+                        
+                        try:
+                            # Process with chat function
+                            response = sync_chat(
+                                chatbot_status="on",
+                                query=event.get("text", ""),
+                                channel_id=channel_id,
+                                thread_ts=thread_ts,
+                                first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
+                            )
+                            
+                            # Send response
+                            client.chat_postMessage(
+                                channel=channel_id,
+                                thread_ts=thread_ts,
+                                text=response
+                            )
+                        except Exception as e:
+                            logger.error(f"Error processing thread reply: {e}", exc_info=True)
+                            client.chat_postMessage(
+                                channel=channel_id,
+                                thread_ts=thread_ts,
+                                text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+                            )
+                        finally:
+                            # Remove reaction
+                            client.reactions_remove(
+                                channel=channel_id,
+                                timestamp=event.get("ts"),
+                                name='eyes'
+                            )
+                else:
+                    logger.info(f"THREAD-REPLY: Bot not mentioned in first message, ignoring")
+            else:
+                logger.info(f"THREAD-REPLY: Could not fetch thread messages")
+                
+        except Exception as e:
+            logger.error(f"THREAD-REPLY: Error processing thread: {e}", exc_info=True)
+            
 # Store bot user ID - initialize immediately instead of waiting for event
 BOT_USER_ID = None
 try:
