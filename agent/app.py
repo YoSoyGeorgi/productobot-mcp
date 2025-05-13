@@ -26,7 +26,9 @@ load_dotenv()
 # Initialize the Slack app
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
-    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+    signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
+    process_before_response=False,
+    ignores_retry_requests=False
 )
 
 # Initialize Supabase client
@@ -34,6 +36,18 @@ supabase: Client = create_client(
     os.environ.get("SUPABASE_URL"),
     os.environ.get("SUPABASE_KEY")
 )
+
+# Add explicit debug middleware to log all incoming events
+@app.middleware
+def log_request(payload, next):
+    logging.info(f"MIDDLEWARE: Received event payload: {json.dumps(payload)}")
+    return next()
+
+# Add a catch-all message listener to ensure we receive all messages
+@app.message("")
+def handle_all_messages(message, client, logger):
+    logger.info(f"CATCH-ALL: Received message event: {json.dumps(message)}")
+    # This is just a catch-all; the specific handler will still process appropriate messages
 
 # Store bot user ID - initialize immediately instead of waiting for event
 BOT_USER_ID = None
