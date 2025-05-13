@@ -452,6 +452,9 @@ def handle_message_events(event, client, logger):
     thread_ts = event.get("thread_ts")
     message_ts = event.get("ts")
     
+    # Debug: log when handle_message_events is invoked and show key variables
+    logger.info(f'handle_message_events triggered - channel={channel_id}, channel_type={channel_type}, thread_ts={thread_ts}, message_ts={message_ts}, text="{message_text}"')
+    
     # Process direct messages (IM) always
     should_process = channel_type == "im"
     
@@ -496,6 +499,8 @@ def handle_message_events(event, client, logger):
     elif thread_ts == message_ts and not should_process: # Process the *first* message of a thread only if bot is mentioned
          should_process = is_bot_mentioned_in_current
 
+    # Debug: log final decision whether to process the message
+    logger.info(f'handle_message_events - final should_process={should_process}')
 
     # If we shouldn't process this message, return
     if not should_process:
