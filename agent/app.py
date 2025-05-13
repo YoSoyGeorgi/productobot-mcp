@@ -26,9 +26,7 @@ load_dotenv()
 # Initialize the Slack app
 app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
-    signing_secret=os.environ.get("SLACK_SIGNING_SECRET"),
-    process_before_response=False,
-    ignores_retry_requests=False
+    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
 
 # Initialize Supabase client
