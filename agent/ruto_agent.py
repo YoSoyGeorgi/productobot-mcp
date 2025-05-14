@@ -353,9 +353,11 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
             chatbot_status=chatbot_status
         )
         
-        # Get the last agent or use router_agent by default
-        current_agent = conversation_history.get(conversation_id, {}).get("current_agent", router_agent)
+        # # Get the last agent or use router_agent by default
+        # current_agent = conversation_history.get(conversation_id, {}).get("current_agent", router_agent)
         
+        current_agent = router_agent
+
         # Get input items or initialize with empty list
         input_items = conversation_history.get(conversation_id, {}).get("input_items", [])
         input_items.append({"content": query, "role": "user"})
