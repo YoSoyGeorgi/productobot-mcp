@@ -566,23 +566,55 @@ def handle_feedback_submission(ack, body, client, logger):
 # Helper function to update message with feedback received indicator
 def update_message_with_feedback_received(client, channel_id, message_ts, feedback_type):
     try:
+        # First, get the original message to preserve its content
+        try:
+            message_response = client.conversations_history(
+                channel=channel_id,
+                latest=message_ts,
+                inclusive=True,
+                limit=1
+            )
+            
+            if not message_response.get("messages"):
+                logging.error("Could not retrieve original message for feedback update")
+                return
+                
+            original_message = message_response["messages"][0]
+            original_text = extract_message_text(original_message)
+            
+        except Exception as e:
+            logging.error(f"Error retrieving original message: {e}")
+            return
+        
         emoji = "✅" if feedback_type == "positive" else "📝"
-        text = "Feedback recibido" if feedback_type == "positive" else "Feedback recibido - Gracias por tus comentarios"
+        feedback_text = "Feedback recibido" if feedback_type == "positive" else "Feedback recibido"
+        
+        # Build new blocks with original response + feedback indicator
+        new_blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": original_text
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"{emoji} {feedback_text}"
+                    }
+                ]
+            }
+        ]
         
         # Update the message to replace buttons with feedback received indicator
         client.chat_update(
             channel=channel_id,
             ts=message_ts,
-            text=f"{emoji} {text}",
-            blocks=[
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"{emoji} {text}"
-                    }
-                }
-            ]
+            text=original_text,
+            blocks=new_blocks
         )
     except Exception as e:
         logging.error(f"Error updating message with feedback indicator: {e}")

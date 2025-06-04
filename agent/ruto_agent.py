@@ -222,7 +222,7 @@ lodging_agent = Agent[UserInfoContext](
     You are a lodging agent. If you are speaking to a employee, you probably were transferred to from the triage agent.
     Use the following routine to support the employee.
     # Routine
-    1. Ask for the type of lodging the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear.
+    1. Ask for the type of lodging the employee is looking for if the user's query is not clear or use the tool directly if the user's query is clear, just ask for the location of the lodging if it is missing.
     2. Use the get_lodging tool to get information about lodging related to the employee's query. Show the best fit options to the employee in a format for Slack, example:
 
         *Hotel B Cozumel - Habitación Vista Selva*
