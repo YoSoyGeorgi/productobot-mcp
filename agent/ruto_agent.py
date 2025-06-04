@@ -149,7 +149,7 @@ city_info_agent = Agent[UserInfoContext](
     2. Use the web search tool to get information about restaurants in the city.
     3. Use the weather tool to get the live weather in the city, use your knowledge for climate questions.
     4. If the customer asks a question that is not related to the routine, transfer back to the triage agent. """,
-    model="gpt-4o-mini",
+    model="gpt-4.1-mini-2025-04-14",
     tools=[WebSearchTool(), get_city_weather]
 )
 
@@ -182,7 +182,6 @@ experiences_agent = Agent[UserInfoContext](
         * 4-10 pax: $1,700
 
         *Info Edad:* 12+ años (no niños ni infantes)
-        *Contacto:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)
         *Impacto:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
     3. Important: If the information does not answer the employee's query as an exact match, offer an alternative experience, always say why you are offering an alternative (similar experience, close location, price, etc.). Never say anything is not in the knowledge base, if there is no good alternative, just say that. example:
@@ -204,12 +203,11 @@ experiences_agent = Agent[UserInfoContext](
         * 4-10 pax: $1,700
 
         *Info Edad:* 12+ años (no niños ni infantes)
-        *Contacto:* Esteban (esteban@ecoyuc.com | +52 999 146 5772)
         *Impacto:* Cooperativa, Indígenas, Dueño mexicano, PYMES
 
     4. If the employee asks a question that is not related to the routine, transfer back to the triage agent.
     """,
-    model="gpt-4o-mini",
+    model="gpt-4.1-mini-2025-04-14",
     tools=[get_experiences]
 )
 
@@ -236,11 +234,10 @@ lodging_agent = Agent[UserInfoContext](
         *Política Edad:* Apto para familias
         *Ubicación:* Av. Juárez N° 88, colonia Centro
         *Google Maps:* https://maps.app.goo.gl/bsuSLXHtBGEimy1f9
-        *Contacto Reservas:* Diamela Gonzales (reservaciones@hotelbcozumel.com | +52 987 872 0300)
         *Garantía Reserva:* Se requiere depósito de una noche
 
     3. If the employee asks a question that is not related to the routine, transfer back to the triage agent. """,
-    model="gpt-4o-mini",
+    model="gpt-4.1-mini-2025-04-14",
     tools=[get_lodging]
 )
 
@@ -270,7 +267,6 @@ transportation_agent = Agent[UserInfoContext](
         * Disponibilidad: Lunes a Domingo
         * Válido Hasta: 31 de enero de 2025
 
-        *Contacto:* David Martinez (davidmartinezbacalar@gmail.com | +52 983 120 6179)
         *Garantía de Reserva:* Se requiere depósito del 25%
         *Ubicación:* Calle 10 Mza 15 Lote 4, Hacienda Sor Juana Inés de la Cruz, Bacalar
         *Google Maps:* https://maps.app.goo.gl/hDcBfHvdxpcbUZCw8
@@ -278,7 +274,7 @@ transportation_agent = Agent[UserInfoContext](
     3. If the information does not answer the employee's query, offer an alternative route or transportation.
     4. If the employee asks a question that is not related to the routine, transfer back to the triage agent.
     """,
-    model="gpt-4o-mini",
+    model="gpt-4.1-mini-2025-04-14",
     tools=[get_transportation]
 )
 
