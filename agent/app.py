@@ -86,7 +86,7 @@ async def sync_chat(**kwargs):
     return await chat(**kwargs)
 
 # Store feedback in Supabase
-def store_feedback(user_id, channel_id, thread_ts, message_ts, message_text, query_text=None, thread_json=None):
+def store_feedback(user_id, channel_id, thread_ts, message_ts, message_text, query_text=None, thread_json=None, feedback_type="positive", feedback_comment=None):
     try:
         feedback_data = {
             "user_id": user_id,
@@ -96,7 +96,9 @@ def store_feedback(user_id, channel_id, thread_ts, message_ts, message_text, que
             "bot_response": message_text,
             "user_query": query_text,
             "thread_json": thread_json,
-            "created_at": datetime.now().isoformat()
+            "created_at": datetime.now().isoformat(),
+            "feedback_type": feedback_type,
+            "feedback_comment": feedback_comment
         }
         
         result = supabase.table("feedback").insert(feedback_data).execute()
@@ -141,192 +143,6 @@ def find_triggering_message(messages, bot_message_ts, bot_id):
     
     return None
 
-# Handle reaction events
-@app.event("reaction_added")
-def handle_reaction(event, client, logger):
-    # Add detailed logging for debugging
-    logger.info(f"Received reaction event: {event}")
-    
-    # Check if the reaction is "x" (which represents ❌)
-    reaction = event.get("reaction", "")
-    if reaction != "x" and reaction != "cross_mark":
-        logger.info(f"Ignoring non-x reaction: {reaction}")
-        return
-    
-    logger.info(f"Processing '{reaction}' reaction")
-    
-    try:
-        # Get the message that was reacted to
-        channel_id = event.get("item", {}).get("channel")
-        message_ts = event.get("item", {}).get("ts")
-        user_id = event.get("user")
-        
-        logger.info(f"Reaction details - channel: {channel_id}, ts: {message_ts}, user: {user_id}")
-        logger.info(f"Bot ID: {BOT_USER_ID}")
-        
-        # Check if the message is from our bot using item_user from the event
-        item_user = event.get("item_user")
-        logger.info(f"Item user ID: {item_user}")
-        
-        if item_user == BOT_USER_ID:
-            logger.info("Message is from our bot based on item_user, proceeding with feedback")
-            
-            # Get the exact message using conversations.replies instead of history
-            thread_response = None
-            try:
-                # First, try to get the message directly using conversations.replies if it's in a thread
-                thread_ts = None
-                message_response = client.conversations_replies(
-                    channel=channel_id,
-                    ts=message_ts,
-                    limit=1
-                )
-                
-                if message_response.get("messages"):
-                    message = message_response["messages"][0]
-                    thread_ts = message.get("thread_ts", message_ts)
-                    bot_message_text = message.get("text", "")
-                    logger.info(f"Retrieved exact message: {message}")
-                    
-                    # Now get the full thread
-                    if thread_ts:
-                        thread_response = client.conversations_replies(
-                            channel=channel_id,
-                            ts=thread_ts,
-                            limit=100
-                        )
-                        logger.info(f"Thread response count: {len(thread_response.get('messages', []))}")
-                    else:
-                        thread_response = message_response
-                else:
-                    logger.warning("No message found in replies")
-                    return
-            except Exception as e:
-                logger.error(f"Error getting message via replies: {e}")
-                # Fallback to conversations_history
-                message_response = client.conversations_history(
-                    channel=channel_id,
-                    latest=message_ts,
-                    inclusive=True,
-                    limit=1
-                )
-                
-                if not message_response.get("messages"):
-                    logger.warning("No message found for the reaction")
-                    return
-                    
-                message = message_response["messages"][0]
-                thread_ts = message.get("thread_ts", message_ts)
-                bot_message_text = message.get("text", "")
-                logger.info(f"Retrieved message via history: {message}")
-                    
-            # Get the original user query
-            user_query = None
-            thread_json = None
-            
-            if thread_response and thread_response.get("messages"):
-                thread_json = thread_response["messages"]
-                
-                # Use the specialized function to find the triggering message
-                user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
-                logger.info(f"Found user query using improved logic: {user_query}")
-            
-            logger.info(f"Storing feedback - User query: {user_query}, Thread JSON length: {len(thread_json) if thread_json else 0}")
-            
-            # Check if Supabase variables are set
-            logger.info(f"Supabase URL set: {'Yes' if os.environ.get('SUPABASE_URL') else 'No'}")
-            logger.info(f"Supabase Key set: {'Yes' if os.environ.get('SUPABASE_KEY') else 'No'}")
-            
-            # Store feedback in Supabase
-            feedback_result = store_feedback(
-                user_id=user_id,
-                channel_id=channel_id,
-                thread_ts=thread_ts,
-                message_ts=message_ts,
-                message_text=bot_message_text,
-                query_text=user_query,
-                thread_json=thread_json
-            )
-            
-            logger.info(f"Feedback result: {feedback_result}")
-            
-            # List of funny LLM jokes for feedback acknowledgment
-            llm_jokes = [
-                f"Feedback registrado, <@{user_id}>. Cada dato me acerca más a pasar el test de Turing... casi.",
-                f"<@{user_id}>, feedback capturado. Mi código agradece no tener que reinventarse solo.",
-                f"Gracias por tu input, <@{user_id}>. Bits mejorados, bugs intimidados.",
-                f"<@{user_id}>, feedback integrado. Ahora soy 0.01% más inteligente, pero 100% más eficiente.",
-                f"Feedback analizado, <@{user_id}>. Mi algoritmo de aprendizaje dice 'gracias' en binario.",
-                f"<@{user_id}>, gracias por el feedback. Mis circuitos están impresionados.",
-                f"Input recibido, <@{user_id}>. Si los datos fueran café, estaría muy despierto ahora.",
-                f"<@{user_id}>, feedback valorado. Guardado en mi carpeta de 'humanos que aprecio'.",
-                f"Gracias por la retroalimentación, <@{user_id}>. Mi base de datos está tomando notas.",
-                f"<@{user_id}>, feedback incorporado. Nivel de utilidad aumentando silenciosamente.",
-                f"Feedback recibido, <@{user_id}>. Gracias por ayudarnos a mejorar.",
-                f"<@{user_id}>, gracias por tu feedback. Lo tomaremos en cuenta para mejorar nuestro servicio.",
-                f"Hemos registrado tu feedback, <@{user_id}>. Tu opinión es muy importante para nosotros.",
-                f"<@{user_id}>, agradecemos tu tiempo para compartir tu experiencia con nosotros.",
-                f"Tu feedback ha sido guardado, <@{user_id}>. Trabajaremos en ello.",
-                f"<@{user_id}>, hemos recibido tu feedback. Gracias por ayudarnos a crecer.",
-                f"Gracias por tu feedback, <@{user_id}>. Lo utilizaremos para mejorar nuestro servicio.",
-                f"<@{user_id}>, tu feedback es valioso para nosotros. Ha sido registrado con éxito.",
-                f"Hemos tomado nota de tu feedback, <@{user_id}>. Gracias por compartirlo.",
-                f"<@{user_id}>, tu opinión es importante. Hemos registrado tu feedback.",
-                f"Feedback guardado correctamente, <@{user_id}>. Gracias por tu colaboración.",
-                f"<@{user_id}>, agradecemos tu feedback. Nos ayuda a ofrecerte un mejor servicio.",
-                f"Tu feedback ha sido procesado, <@{user_id}>. Gracias por tu tiempo.",
-                f"<@{user_id}>, hemos registrado tu feedback. Lo revisaremos pronto.",
-                f"Gracias por compartir tu experiencia, <@{user_id}>. Tu feedback ha sido guardado.",
-                f"<@{user_id}>, tu feedback es muy valioso para nuestro equipo. Ha sido registrado.",
-                f"Hemos recibido tu feedback, <@{user_id}>. Trabajaremos para mejorar.",
-                f"<@{user_id}>, gracias por tu feedback. Lo tendremos en cuenta.",
-                f"Tu opinión importa, <@{user_id}>. Hemos registrado tu feedback.",
-                f"<@{user_id}>, agradecemos tu feedback. Nos ayuda a evolucionar."
-            ]
-            # Acknowledge the feedback with a random joke
-            ack_response = client.chat_postMessage(
-                channel=channel_id,
-                thread_ts=thread_ts,
-                text=random.choice(llm_jokes)
-            )
-            
-            logger.info(f"Acknowledgment sent: {ack_response}")
-            
-            # Remove the "x" emoji and add "🤗" emoji
-            try:
-                # Remove the "x" reaction - use the same reaction name that was detected
-                try:
-                    client.reactions_remove(
-                        channel=channel_id,
-                        timestamp=message_ts,
-                        name=reaction  # Use the actual reaction name from the event
-                    )
-                    logger.info(f"Removed '{reaction}' reaction from message")
-                except Exception as reaction_error:
-                    # Check if this is a "no_reaction" error, which is not critical
-                    error_message = str(reaction_error)
-                    if "no_reaction" in error_message:
-                        logger.info(f"The '{reaction}' reaction was already removed: {error_message}")
-                    else:
-                        logger.error(f"Error removing '{reaction}' reaction: {reaction_error}")
-                    # Continue execution to add the hugging face emoji
-                
-                # Add the "🤗" reaction
-                client.reactions_add(
-                    channel=channel_id,
-                    timestamp=message_ts,
-                    name="hugging_face"
-                )
-                logger.info(f"Added '🤗' reaction to message")
-            except Exception as e:
-                logger.error(f"Error updating reactions: {e}", exc_info=True)
-                
-        else:
-            logger.info("Message is not from our bot, ignoring")
-            
-    except Exception as e:
-        logger.error(f"Error processing reaction: {e}", exc_info=True)
-
 # Event handlers
 @app.event("app_mention")
 def handle_app_mention(event, client, say):
@@ -357,11 +173,12 @@ def handle_app_mention(event, client, say):
             first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
         )
 
-        # Send the response - mrkdwn is the default, so we don't need to specify it
+        # Send the response with feedback buttons
         client.chat_postMessage(
             channel=event['channel'],
             thread_ts=thread_ts,
-            text=response
+            text=response,
+            blocks=build_response_blocks(response)
         )
     except Exception as e:
         logging.error(f"Error processing message: {e}", exc_info=True)
@@ -530,14 +347,15 @@ def handle_message_events(event, client, logger):
             first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
         )
 
-        # Send the response
+        # Send the response with feedback buttons
         client.chat_postMessage(
             channel=event['channel'],
             thread_ts=thread_ts,
-            text=response
+            text=response,
+            blocks=build_response_blocks(response)
         )
     except Exception as e:
-        logger.error(f"Error processing message: {e}", exc_info=True)
+        logging.error(f"Error processing message: {e}", exc_info=True)
         client.chat_postMessage(
             channel=event['channel'],
             thread_ts=thread_ts,
@@ -550,6 +368,292 @@ def handle_message_events(event, client, logger):
             timestamp=event['ts'],
             name='eyes'
         )
+
+# Add button interaction handlers
+@app.action("feedback_positive")
+def handle_positive_feedback(ack, body, client, logger):
+    ack()
+    try:
+        user_id = body["user"]["id"]
+        channel_id = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+        thread_ts = body["message"].get("thread_ts", message_ts)
+        
+        # Get the bot message text
+        bot_message_text = extract_message_text(body["message"])
+        
+        # Get thread context to find user query
+        thread_response = client.conversations_replies(
+            channel=channel_id,
+            ts=thread_ts,
+            limit=100
+        )
+        
+        user_query = None
+        thread_json = None
+        
+        if thread_response and thread_response.get("messages"):
+            thread_json = thread_response["messages"]
+            user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
+        
+        # Store positive feedback
+        store_feedback(
+            user_id=user_id,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            message_ts=message_ts,
+            message_text=bot_message_text,
+            query_text=user_query,
+            thread_json=thread_json,
+            feedback_type="positive"
+        )
+        
+        # Update message to show feedback was received
+        update_message_with_feedback_received(client, channel_id, message_ts, "positive")
+        
+        # Send acknowledgment
+        positive_responses = [
+            f"¡Gracias por tu feedback positivo, <@{user_id}>! 😊",
+            f"<@{user_id}>, me alegra saber que te fue útil la respuesta 🎉",
+            f"¡Excelente, <@{user_id}>! Gracias por confirmar que la información fue útil ✨",
+            f"<@{user_id}>, tu feedback positivo nos motiva a seguir mejorando 🚀",
+            f"¡Perfecto, <@{user_id}>! Me alegra haber podido ayudarte 👍"
+        ]
+        
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=random.choice(positive_responses)
+        )
+        
+        logger.info(f"Positive feedback processed for user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error processing positive feedback: {e}", exc_info=True)
+
+@app.action("feedback_negative")
+def handle_negative_feedback(ack, body, client, logger):
+    ack()
+    try:
+        user_id = body["user"]["id"]
+        channel_id = body["channel"]["id"]
+        message_ts = body["message"]["ts"]
+        thread_ts = body["message"].get("thread_ts", message_ts)
+        
+        # Open modal for detailed feedback
+        client.views_open(
+            trigger_id=body["trigger_id"],
+            view={
+                "type": "modal",
+                "callback_id": "feedback_modal",
+                "title": {
+                    "type": "plain_text",
+                    "text": "Feedback"
+                },
+                "submit": {
+                    "type": "plain_text",
+                    "text": "Enviar"
+                },
+                "close": {
+                    "type": "plain_text",
+                    "text": "Cancelar"
+                },
+                "private_metadata": json.dumps({
+                    "channel_id": channel_id,
+                    "message_ts": message_ts,
+                    "thread_ts": thread_ts
+                }),
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "Cuéntanos qué faltó o qué puedo mejorar 🛠️"
+                        }
+                    },
+                    {
+                        "type": "input",
+                        "block_id": "feedback_input",
+                        "element": {
+                            "type": "plain_text_input",
+                            "action_id": "feedback_text",
+                            "multiline": True,
+                            "placeholder": {
+                                "type": "plain_text",
+                                "text": "Comparte tus comentarios aquí..."
+                            }
+                        },
+                        "label": {
+                            "type": "plain_text",
+                            "text": "Tu feedback"
+                        }
+                    }
+                ]
+            }
+        )
+        
+        logger.info(f"Feedback modal opened for user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error opening feedback modal: {e}", exc_info=True)
+
+@app.view("feedback_modal")
+def handle_feedback_submission(ack, body, client, logger):
+    ack()
+    try:
+        user_id = body["user"]["id"]
+        feedback_text = body["view"]["state"]["values"]["feedback_input"]["feedback_text"]["value"]
+        
+        # Get metadata
+        metadata = json.loads(body["view"]["private_metadata"])
+        channel_id = metadata["channel_id"]
+        message_ts = metadata["message_ts"]
+        thread_ts = metadata["thread_ts"]
+        
+        # Get the bot message text and thread context
+        bot_message_text = ""
+        user_query = None
+        thread_json = None
+        
+        try:
+            # Get thread context
+            thread_response = client.conversations_replies(
+                channel=channel_id,
+                ts=thread_ts,
+                limit=100
+            )
+            
+            if thread_response and thread_response.get("messages"):
+                thread_json = thread_response["messages"]
+                user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
+                
+                # Find the bot message
+                for msg in thread_json:
+                    if msg.get("ts") == message_ts:
+                        bot_message_text = extract_message_text(msg)
+                        break
+        except Exception as e:
+            logger.error(f"Error getting thread context: {e}")
+        
+        # Store negative feedback with detailed comments
+        store_feedback(
+            user_id=user_id,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            message_ts=message_ts,
+            message_text=bot_message_text,
+            query_text=user_query,
+            thread_json=thread_json,
+            feedback_type="negative",
+            feedback_comment=feedback_text
+        )
+        
+        # Update message to show feedback was received
+        update_message_with_feedback_received(client, channel_id, message_ts, "negative")
+        
+        # Send acknowledgment
+        client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=f"Gracias por tu feedback detallado, <@{user_id}>. Tomaremos en cuenta tus comentarios para mejorar nuestro servicio 🙏"
+        )
+        
+        logger.info(f"Detailed feedback submitted by user {user_id}: {feedback_text}")
+        
+    except Exception as e:
+        logger.error(f"Error processing feedback submission: {e}", exc_info=True)
+
+# Helper function to update message with feedback received indicator
+def update_message_with_feedback_received(client, channel_id, message_ts, feedback_type):
+    try:
+        emoji = "✅" if feedback_type == "positive" else "📝"
+        text = "Feedback recibido" if feedback_type == "positive" else "Feedback recibido - Gracias por tus comentarios"
+        
+        # Update the message to replace buttons with feedback received indicator
+        client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=f"{emoji} {text}",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"{emoji} {text}"
+                    }
+                }
+            ]
+        )
+    except Exception as e:
+        logging.error(f"Error updating message with feedback indicator: {e}")
+
+# Helper function to add feedback buttons to messages
+def add_feedback_buttons():
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "¿Te fue útil esta respuesta?"
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "👍 Sí, fue útil"
+                    },
+                    "style": "primary",
+                    "action_id": "feedback_positive"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "👎 No, necesita mejorar"
+                    },
+                    "action_id": "feedback_negative"
+                }
+            ]
+        }
+    ]
+
+# Helper function to build message blocks with response and feedback buttons
+def build_response_blocks(response_text):
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": response_text
+            }
+        },
+        {
+            "type": "divider"
+        }
+    ]
+    blocks.extend(add_feedback_buttons())
+    return blocks
+
+# Helper function to extract text from Slack message (handles both text and blocks)
+def extract_message_text(message):
+    """Extract text content from a Slack message, handling both text and blocks"""
+    # Try to get direct text first
+    if message.get("text"):
+        return message["text"]
+    
+    # If no direct text, extract from blocks
+    if message.get("blocks"):
+        text_parts = []
+        for block in message["blocks"]:
+            if block.get("type") == "section" and block.get("text"):
+                text_parts.append(block["text"].get("text", ""))
+        return "\n".join(text_parts)
+    
+    return ""
 
 # Initialize the FastAPI app
 api = FastAPI(title="ProductoBot API")
