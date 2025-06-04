@@ -330,11 +330,15 @@ def handle_reaction(event, client, logger):
 # Event handlers
 @app.event("app_mention")
 def handle_app_mention(event, client, say):
-    client.reactions_add(
-        channel=event['channel'],
-        timestamp=event['ts'],
-        name='eyes'
-    )
+    try:
+        client.reactions_add(
+            channel=event['channel'],
+            timestamp=event['ts'],
+            name='eyes'
+        )
+    except Exception as e:
+        # Log the error but continue execution
+        logging.warning(f"Could not add reaction: {e}")
     
     # Get user info
     user_id = event.get("user")
@@ -367,11 +371,15 @@ def handle_app_mention(event, client, say):
             text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
         )
     finally:
-        client.reactions_remove(
-            channel=event['channel'],
-            timestamp=event['ts'],
-            name='eyes'
-        )
+        try:
+            client.reactions_remove(
+                channel=event['channel'],
+                timestamp=event['ts'],
+                name='eyes'
+            )
+        except Exception as e:
+            # Log the error but continue execution
+            logging.warning(f"Could not remove reaction: {e}")
 
 @app.event("app_home_opened")
 def handle_app_home_opened_events(event, client, logger):
