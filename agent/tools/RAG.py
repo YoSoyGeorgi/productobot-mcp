@@ -239,7 +239,7 @@ IMPORTANT: If a piece of information is not present in the user query leave the 
             # If not enough results or poor relevance, run without the state filter
             sql_query = f"""
             SELECT id::text, narrative_text, city, full_json, vector_embedding <=> '{embedding_literal}'::vector AS distance
-            FROM experiences
+            FROM {table}
             ORDER BY vector_embedding <=> '{embedding_literal}'::vector
             LIMIT 10;
             """
