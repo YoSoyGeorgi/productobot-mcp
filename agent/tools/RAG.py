@@ -220,7 +220,7 @@ IMPORTANT: If a piece of information is not present in the user query leave the 
         # First, try to find experiences that match the state name
         sql_query_with_state = f"""
         SELECT id::text, narrative_text, city, full_json, vector_embedding <=> '{embedding_literal}'::vector AS distance
-        FROM experiences
+        FROM {table}
         WHERE LOWER(destination_name) LIKE LOWER('%{state_name}%')
         ORDER BY vector_embedding <=> '{embedding_literal}'::vector
         LIMIT 10;
@@ -249,7 +249,7 @@ IMPORTANT: If a piece of information is not present in the user query leave the 
         # If no state_name, run without state filter
         sql_query = f"""
         SELECT id::text, narrative_text, city, full_json, vector_embedding <=> '{embedding_literal}'::vector AS distance
-        FROM experiences
+        FROM {table}
         ORDER BY vector_embedding <=> '{embedding_literal}'::vector
         LIMIT 10;
         """
