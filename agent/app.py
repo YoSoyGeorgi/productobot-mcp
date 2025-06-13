@@ -382,6 +382,22 @@ def handle_positive_feedback(ack, body, client, logger):
         # Get the bot message text
         bot_message_text = extract_message_text(body["message"])
         
+        # Update the message to show positive feedback was selected
+        original_response_text = None
+        for block in body["message"].get("blocks", []):
+            if block.get("type") == "section" and block.get("text") and "¿Te fue útil esta respuesta?" not in block.get("text", {}).get("text", ""):
+                original_response_text = block["text"]["text"]
+                break
+        
+        if original_response_text:
+            updated_blocks = build_response_blocks_with_selection(original_response_text, "positive")
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text=original_response_text,
+                blocks=updated_blocks
+            )
+        
         # Get thread context to find user query
         thread_response = client.conversations_replies(
             channel=channel_id,
@@ -436,6 +452,22 @@ def handle_negative_feedback(ack, body, client, logger):
         channel_id = body["channel"]["id"]
         message_ts = body["message"]["ts"]
         thread_ts = body["message"].get("thread_ts", message_ts)
+        
+        # Update the message to show negative feedback was selected
+        original_response_text = None
+        for block in body["message"].get("blocks", []):
+            if block.get("type") == "section" and block.get("text") and "¿Te fue útil esta respuesta?" not in block.get("text", {}).get("text", ""):
+                original_response_text = block["text"]["text"]
+                break
+        
+        if original_response_text:
+            updated_blocks = build_response_blocks_with_selection(original_response_text, "negative")
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text=original_response_text,
+                blocks=updated_blocks
+            )
         
         # Open modal for detailed feedback
         client.views_open(
@@ -576,7 +608,6 @@ def add_feedback_buttons():
                         "type": "plain_text",
                         "text": "👍 Sí, fue útil"
                     },
-                    "style": "primary",
                     "action_id": "feedback_positive"
                 },
                 {
@@ -588,6 +619,46 @@ def add_feedback_buttons():
                     "action_id": "feedback_negative"
                 }
             ]
+        }
+    ]
+
+# Helper function to add feedback buttons with selection highlighting
+def add_feedback_buttons_with_selection(selected_feedback):
+    positive_button = {
+        "type": "button",
+        "text": {
+            "type": "plain_text",
+            "text": "👍 Sí, fue útil"
+        },
+        "action_id": "feedback_positive"
+    }
+    
+    negative_button = {
+        "type": "button",
+        "text": {
+            "type": "plain_text",
+            "text": "👎 No, necesita mejorar"
+        },
+        "action_id": "feedback_negative"
+    }
+    
+    # Add primary style to the selected button
+    if selected_feedback == "positive":
+        positive_button["style"] = "primary"
+    elif selected_feedback == "negative":
+        negative_button["style"] = "danger"
+    
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "¿Te fue útil esta respuesta?"
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [positive_button, negative_button]
         }
     ]
 
@@ -606,6 +677,23 @@ def build_response_blocks(response_text):
         }
     ]
     blocks.extend(add_feedback_buttons())
+    return blocks
+
+# Helper function to build message blocks with selected feedback highlighting
+def build_response_blocks_with_selection(response_text, selected_feedback):
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": response_text
+            }
+        },
+        {
+            "type": "divider"
+        }
+    ]
+    blocks.extend(add_feedback_buttons_with_selection(selected_feedback))
     return blocks
 
 # Helper function to extract text from Slack message (handles both text and blocks)
