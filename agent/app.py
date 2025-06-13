@@ -577,11 +577,13 @@ def handle_feedback_submission(ack, body, client, logger):
             feedback_comment=feedback_text
         )
         
-        # Send acknowledgment
+        # Send acknowledgment with the feedback content
+        feedback_message = f"Gracias por tu feedback detallado, <@{user_id}>. Tomaremos en cuenta tus comentarios para mejorar nuestro servicio 🙏\n\n---\n**Feedback recibido:**\n{feedback_text}"
+        
         client.chat_postMessage(
             channel=channel_id,
             thread_ts=thread_ts,
-            text=f"Gracias por tu feedback detallado, <@{user_id}>. Tomaremos en cuenta tus comentarios para mejorar nuestro servicio 🙏"
+            text=feedback_message
         )
         
         logger.info(f"Detailed feedback submitted by user {user_id}: {feedback_text}")
