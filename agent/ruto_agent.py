@@ -76,55 +76,58 @@ async def get_city_weather(contextWrapper: RunContextWrapper[UserInfoContext], c
 
 
 @function_tool
-async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
-    """Get the experiences form the knowledge base.
+async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], location_and_activity_preferences: str) -> str:
+    """Get experience recommendations from the knowledge base.
     Args:
-        user_query: The message from the user to get the experiences for.
+        location_and_activity_preferences: The location, activity type, dates, preferences, budget, and any specific experience requirements from the user's request.
     Returns:
-        The experiences from the knowledge base.
+        The experience recommendations from the knowledge base.
     """
-    logger.info(f"get_experiences called with query: {user_query}")
+    logger.info(f"get_experiences called with query: {location_and_activity_preferences}")
     try:
         logger.info("Calling process_user_query for experiences")
-        formatted_results, search_results, match_type = process_user_query(user_query, "experiences")
+        formatted_results, search_results, match_type = process_user_query(location_and_activity_preferences, "experiences")
         logger.info(f"Search results count: {len(search_results) if search_results else 0}")
         
-        contextWrapper.context.user_query = user_query
+        # Store the processed query in context for tracking
+        contextWrapper.context.user_query = location_and_activity_preferences
         if match_type == "state":
             return formatted_results
         else:
             return f"No encontré experiencias en la ubicación exacta pero te dejo algunas opciones cercanas: {formatted_results}"
     except Exception as e:
         logger.error(f"Error in get_experiences: {str(e)}", exc_info=True)
-        return f"Lo siento, tuve un problema buscando experiencias para '{user_query}'. Error: {str(e)}"
+        return f"Lo siento, tuve un problema buscando experiencias para '{location_and_activity_preferences}'. Error: {str(e)}"
 
 @function_tool
-async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
-    """Get the lodging form the knowledge base.
+async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], location_and_preferences: str) -> str:
+    """Get lodging recommendations from the knowledge base.
     Args:
-        user_query: The message from the user to get the lodging for.
+        location_and_preferences: The location, dates, preferences, budget, and any specific lodging requirements from the user's request.
     Returns:
-        The lodging from the knowledge base.
+        The lodging recommendations from the knowledge base.
     """
-    formatted_results, search_results, match_type = process_user_lodging_query(user_query)
+    formatted_results, search_results, match_type = process_user_lodging_query(location_and_preferences)
 
-    contextWrapper.context.user_query = user_query
+    # Store the processed query in context for tracking
+    contextWrapper.context.user_query = location_and_preferences
     if match_type == "state":
         return formatted_results
     else:
         return f"No encontré alojamientos en la ubicación exacta pero te dejo algunas opciones cercanas: {formatted_results}"
 
 @function_tool
-async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext], user_query: str) -> str:
-    """Get the transportation form the knowledge base.
+async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext], route_and_preferences: str) -> str:
+    """Get transportation options from the knowledge base.
     Args:
-        user_query: The message from the user to get the transportation for.
+        route_and_preferences: The origin, destination, dates, travel preferences, budget, and any specific transportation requirements from the user's request.
     Returns:
-        The transportation from the knowledge base.
+        The transportation options from the knowledge base.
     """
-    formatted_results, search_results, match_type = process_user_query(user_query, "transport")
+    formatted_results, search_results, match_type = process_user_query(route_and_preferences, "transport")
 
-    contextWrapper.context.user_query = user_query
+    # Store the processed query in context for tracking
+    contextWrapper.context.user_query = route_and_preferences
     if match_type == "state":
         return formatted_results
     else:
