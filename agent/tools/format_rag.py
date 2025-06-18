@@ -327,10 +327,30 @@ def format_experience(experience_data):
     else:
         output += "**Bank Account Info:** Not provided\n"
 
-    # Add impact information if available
+    # Add impact and provider classification information
+    output += "\n## Provider Classification\n"
+    
     impact_group = full_json.get('metadata', {}).get('impactGroup')
     if impact_group:
-        output += f"\n## Impact\n{impact_group}\n"
+        output += f"**Impact Category:** {impact_group}\n"
+    
+    supplier_group = full_json.get('supplierInfo', {}).get('group')
+    if supplier_group:
+        output += f"**Supplier Group:** {supplier_group}\n"
+    
+    potential_supplier = full_json.get('supplierInfo', {}).get('potentialSupplier')
+    if potential_supplier:
+        output += f"**Provider Status:** {potential_supplier}\n"
+    
+    # Add service type for additional classification
+    service_type = service_details.get('serviceType')
+    if service_type:
+        output += f"**Service Type:** {service_type}\n"
+    
+    # Show if provider is complete/ready
+    is_complete = full_json.get('supplierInfo', {}).get('isComplete')
+    if is_complete is not None:
+        output += f"**Provider Complete:** {'Yes' if is_complete else 'No'}\n"
 
     # Add ending divider
     output += "\n---------END OF EXPERIENCE-------------------"
@@ -343,386 +363,351 @@ def format_lodging(experience_data):
     id = data['id']
     full_json = json.loads(data['full_json'])
     
-    # Extract necessary fields
+    # Extract necessary fields with proper null handling
     service_details = full_json.get('serviceDetails', {})
-    descriptions = full_json.get('descriptions', {}).get('english', {})
+    descriptions = full_json.get('descriptions', {})
     contacts = full_json.get('contacts', {})
     location = full_json.get('location', {})
     availability = full_json.get('availability', {})
-    pricing_periods = full_json.get('pricingPeriods', [{}])[0] if full_json.get('pricingPeriods') else {}
+    pricing_periods = full_json.get('pricingPeriods', [])
     includes = full_json.get('includes', {})
     facilities = full_json.get('facilities', {})
-    
-    # Check if this is an accommodation service
-    is_accommodation = service_details.get('serviceTypeCode') == 'AC' or facilities.get('accommodationType')
+    financial_info = full_json.get('financialInfo', {})
+    supplier_info = full_json.get('supplierInfo', {})
+    tariffs = full_json.get('tariffs', {})
     
     # Begin formatted output with divider
     output = """-------------START OF LODGING-------------------
 
 """
     
+    # Basic identification
     output += f"""**ID:** {id}
-**Operator:** {service_details.get('supplierName', 'N/A')}
+**Hotel/Property:** {service_details.get('supplierName', 'N/A')}
+**Room Type:** {service_details.get('fullServiceDescription', 'N/A')}
 **Service Code:** {service_details.get('serviceCode', 'N/A')}
-**Full Service Description:** {service_details.get('fullServiceDescription', 'N/A')}
-**Supplier Folder:** {full_json.get('supplierInfo', {}).get('supplierFolder', 'N/A')}
-
+**Supplier Code:** {service_details.get('supplierCode', 'N/A')}
 """
 
-    # Add description if available
-    if descriptions and descriptions.get('description'):
-        output += f"""## Description (EN)
-{descriptions.get('description', 'N/A')}
+    # Add supplier folder link if available
+    supplier_folder = supplier_info.get('supplierFolder', '')
+    if supplier_folder:
+        output += f"**Supplier Folder:** {supplier_folder}\n"
 
+    output += "\n"
+
+    # Property description from multiple language options
+    description_found = False
+    for lang_key, lang_name in [('englishDescription', 'English'), ('spanishDescription', 'Spanish')]:
+        desc = descriptions.get(lang_key)
+        if desc and desc.strip():
+            output += f"""## Description ({lang_name})
+{desc}
+
+"""
+            description_found = True
+            break
+    
+    if not description_found:
+        # Try titles if no descriptions
+        for lang_key, lang_name in [('englishTitle', 'English'), ('spanishTitle', 'Spanish')]:
+            title = descriptions.get(lang_key)
+            if title and title.strip():
+                output += f"""## Title ({lang_name})
+{title}
+
+"""
+                break
+    
+    # Location Information
+    output += """## Location & Property Details
 """
     
-    output += """## Basic Info
-"""
-    # Location info
-    location_name = service_details.get('locationName', 'N/A')
-    destination_name = service_details.get('destinationName', 'N/A')
-    output += f"**Location:** {location_name}"
-    if destination_name and destination_name != 'N/A':
-        output += f", {destination_name}"
-    output += f"""
-**Destination:** {destination_name} (Code: {service_details.get('destinationCode', 'N/A')})
-**Service Location Name:** {location.get('locations', 'N/A')}
-"""
-
-    # Pickup and logistics
-    pickup_point = full_json.get('logistics', {}).get('pickupPoint', 'N/A')
-    output += f"**Pickup Point:** {pickup_point}\n"
-    output += f"**Includes Transport:** {'Yes' if service_details.get('includesTransport', False) else 'No'}\n"
-    output += f"**Pickup / Drop-off:** {'Yes' if full_json.get('logistics', {}).get('pickup', False) else 'No'}\n"
-    output += f"**Parking:** {full_json.get('logistics', {}).get('parking', 'N/A')}\n"
+    destination_name = service_details.get('destinationName') or location.get('destinationName', 'N/A')
+    location_name = service_details.get('locationName') or location.get('locationName', 'N/A')
     
-    # Add accommodation-specific information if available
-    if is_accommodation:
-        output += "\n## Accommodation Details\n"
-        accommodation_type = facilities.get('accommodationType')
-        if accommodation_type:
-            output += f"**Accommodation Type:** {accommodation_type}\n"
-        
-        num_rooms = facilities.get('numRooms')
-        if num_rooms:
-            output += f"**Number of Rooms:** {num_rooms}\n"
-        
-        available_food = facilities.get('availableFood')
-        if available_food:
-            output += f"**Food Options:** {available_food}\n"
-            
-        facilities_services = facilities.get('facilitiesServices')
-        if facilities_services:
-            output += f"**Facilities & Services:** {facilities_services}\n"
-            
-        breakfast_hours = full_json.get('logistics', {}).get('breakfastHours')
-        if breakfast_hours:
-            output += f"**Breakfast Hours:** {breakfast_hours}\n"
-            
-        delighters = facilities.get('delighters')
-        if delighters and delighters is not False:
-            output += f"**Special Features:** {'Yes' if delighters is True else delighters}\n"
+    output += f"**Destination:** {destination_name}"
+    dest_code = service_details.get('destinationCode')
+    if dest_code:
+        output += f" ({dest_code})"
+    output += f"\n**City/Location:** {location_name}\n"
+    
+    # Property address
+    address = location.get('address')
+    if address:
+        output += f"**Address:** {address}\n"
+    
+    # Google Maps link
+    google_maps = location.get('googleMapsUrl')
+    if google_maps:
+        output += f"**Google Maps:** {google_maps}\n"
 
-    # Availability section
+    # Room and Property Information
+    output += "\n## Room & Property Info\n"
+    
+    # Room details
+    room_description = service_details.get('serviceDescription') or service_details.get('fullServiceDescription', '')
+    if room_description:
+        output += f"**Room Description:** {room_description}\n"
+    
+    room_type = service_details.get('roomType')
+    if room_type:
+        output += f"**Room Type:** {room_type}\n"
+    
+    category = service_details.get('category')
+    if category:
+        output += f"**Category:** {category}\n"
+    
+    service_class = service_details.get('serviceClass')
+    if service_class:
+        class_mapping = {
+            'SUP': 'Superior',
+            'STD': 'Standard', 
+            'DEL': 'Deluxe',
+            'LUX': 'Luxury'
+        }
+        class_display = class_mapping.get(service_class, service_class)
+        output += f"**Service Class:** {class_display}\n"
+    
+    # Star rating
+    star_rating = service_details.get('starRating')
+    if star_rating:
+        output += f"**Star Rating:** {star_rating}\n"
+    
+    # Number of rooms in property
+    num_rooms = facilities.get('numRooms')
+    if num_rooms:
+        output += f"**Total Rooms in Property:** {num_rooms}\n"
+
+    # Meal Plan Information
+    meal_plan = service_details.get('mealPlan')
+    service_notes = service_details.get('serviceNotes')
+    
+    if meal_plan or service_notes:
+        output += "\n## Meals & Dining\n"
+        if meal_plan:
+            output += f"**Meal Plan:** {meal_plan}\n"
+        if service_notes and service_notes != meal_plan:
+            output += f"**Dining Notes:** {service_notes}\n"
+    
+    # Breakfast hours
+    breakfast_hours = facilities.get('breakfastHours')
+    if breakfast_hours:
+        output += f"**Breakfast Hours:** {breakfast_hours}\n"
+
+    # Facilities and Amenities
+    output += "\n## Facilities & Amenities\n"
+    
+    # Main amenities
+    amenities = facilities.get('amenities') or service_details.get('amenities')
+    if amenities:
+        # Clean up amenities string and format as list
+        amenities_list = [amenity.strip() for amenity in amenities.split(',')]
+        output += "**Available Amenities:**\n"
+        for amenity in amenities_list:
+            if amenity:
+                output += f"• {amenity}\n"
+    
+    # Specific facility flags
+    facility_items = []
+    if facilities.get('parking') is True:
+        facility_items.append("Parking available")
+    if facilities.get('wifi') is True:
+        facility_items.append("WiFi available")
+    if facilities.get('pool') is True:
+        facility_items.append("Swimming pool")
+    if facilities.get('gym') is True:
+        facility_items.append("Gym/Fitness center")
+    if facilities.get('spa') is True:
+        facility_items.append("Spa services")
+    if facilities.get('restaurant') is True:
+        facility_items.append("Restaurant")
+    if facilities.get('bar') is True:
+        facility_items.append("Bar")
+    if facilities.get('roomService') is True:
+        facility_items.append("Room service")
+    if facilities.get('airConditioning') is True:
+        facility_items.append("Air conditioning")
+    
+    if facility_items:
+        output += "\n**Additional Facilities:**\n"
+        for item in facility_items:
+            output += f"• {item}\n"
+
+    # Check-in/out times
+    check_in = facilities.get('checkInTime')
+    check_out = facilities.get('checkOutTime')
+    if check_in or check_out:
+        output += "\n## Check-in & Check-out\n"
+        if check_in:
+            output += f"**Check-in Time:** {check_in}\n"
+        if check_out:
+            output += f"**Check-out Time:** {check_out}\n"
+
+    # Availability Information
     output += "\n## Availability\n"
     
-    # Handle availability days dynamically
+    # Check days of operation
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-    available_days = [day.capitalize() for day in days if availability.get(day, False) is True]
+    available_days = []
+    for day in days:
+        if availability.get(day) is True:
+            available_days.append(day.capitalize())
+    
     if available_days:
         if len(available_days) == 7:
-            days_text = "Monday through Sunday"
+            output += "**Available:** 7 days a week\n"
         else:
-            days_text = ", ".join(available_days)
+            output += f"**Available Days:** {', '.join(available_days)}\n"
     else:
-        days_text = "Not specified"
-        
-    output += f"**Days Available:** {days_text}\n"
-    output += f"**Response Time:** {availability.get('responseTime', 'Not specified')}\n"
+        # Check if all days are null (which often means always available)
+        all_null = all(availability.get(day) is None for day in days)
+        if all_null:
+            output += "**Available:** Daily (subject to availability)\n"
+        else:
+            output += "**Available:** Contact for availability\n"
     
-    # Valid dates and rate status
-    if pricing_periods:
-        valid_from = pricing_periods.get('validFrom', 'N/A')
-        valid_to = pricing_periods.get('validTo', 'N/A')
-        
-        if valid_from and valid_from != 'N/A':
-            valid_from = valid_from.split('T')[0]
-        if valid_to and valid_to != 'N/A':
-            valid_to = valid_to.split('T')[0]
-            
-        output += f"**Valid Dates:** {valid_from} – {valid_to}\n"
-        output += f"**Rate Status:** {pricing_periods.get('rateStatus', 'N/A')}\n"
-    else:
-        output += "**Valid Dates:** Not specified\n"
-        output += "**Rate Status:** Not specified\n"
+    response_time = availability.get('responseTime')
+    if response_time:
+        output += f"**Response Time:** {response_time}\n"
 
-    # Duration and timing
-    if not is_accommodation:
-        output += "\n## Duration & Timing\n"
-        duration = service_details.get('duration', 'N/A')
-        output += f"**Duration:** {duration}\n"
-
-        # Try to extract start time from notes if available
-        start_time = "Not specified"
-        notes = service_details.get('serviceNotes', '')
-        time_match = re.search(r'(\d+(?::\d+)?(?:\s*(?:am|pm|AM|PM))?(?:\s*to\s*\d+(?::\d+)?(?:\s*(?:am|pm|AM|PM))?))', notes)
-        if time_match:
-            start_time = time_match.group(1)
-            
-        output += f"**Start Time:** {start_time}\n"
-        output += f"**Logistics Note:** {notes}\n"
+    # Pricing Information
+    output += "\n## Pricing Information\n"
+    
+    # Check for pricing data
+    if pricing_periods and len(pricing_periods) > 0:
+        output += "Pricing available - contact for current rates\n"
     else:
-        # For accommodations, just show notes
-        notes = service_details.get('serviceNotes', '')
-        if notes:
-            output += f"**Notes:** {notes}\n"
-
-    # Age restrictions and capacity
-    output += "\n## Age & Capacity\n"
+        output += "Contact property for current rates and availability\n"
     
-    # Extract age restrictions more flexibly
-    age_restrictions = full_json.get('ageRestrictions', {})
-    
-    # Adult age
-    min_adult_age = age_restrictions.get('adult', {}).get('from')
-    if min_adult_age and not (isinstance(min_adult_age, float) and math.isnan(min_adult_age)):
-        min_age = f"{min_adult_age}+"
-    else:
-        min_age = "Not specified"
-    output += f"**Min Age:** {min_age}\n"
-    
-    # Age policy
-    age_policy = age_restrictions.get('agePolicy')
-    if age_policy:
-        output += f"**Age Policy:** {age_policy}\n"
-    
-    # Child age range
-    child_from = age_restrictions.get('child', {}).get('from')
-    child_to = age_restrictions.get('child', {}).get('to')
-    if child_from and child_to and not (isinstance(child_from, float) and math.isnan(child_from)):
-        output += f"**Child Age Range:** {child_from}-{child_to}\n"
-    
-    # Infant age range  
-    infant_from = age_restrictions.get('infant', {}).get('from')
-    infant_to = age_restrictions.get('infant', {}).get('to')
-    if infant_from and infant_to and not (isinstance(infant_from, float) and math.isnan(infant_from)):
-        output += f"**Infant Age Range:** {infant_from}-{infant_to}\n"
-    
-    output += f"**Children Allowed:** {'Yes' if age_restrictions.get('childrenAllowed', False) else 'No'}\n"
-    output += f"**Infants Allowed:** {'Yes' if age_restrictions.get('infantsAllowed', False) else 'No'}\n"
-    
-    max_capacity = service_details.get('maxAdultCapacity')
-    if max_capacity and not (isinstance(max_capacity, float) and math.isnan(max_capacity)):
-        output += f"**Max Adults per Group:** {max_capacity}\n"
-    else:
-        output += "**Max Adults per Group:** Not specified\n"
-
-    # Languages
-    output += "\n## Languages\n"
-    languages = service_details.get('availableLanguages', [])
-    if languages and not all(lang is None for lang in languages):
-        for lang in languages:
-            if lang:
-                output += f"{lang}\n"
-    else:
-        output += "Not specified\n"
-    
-    # Includes section if available
-    if includes and includes.get('english'):
-        output += f"\n## Includes\n{includes.get('english')}\n"
-        
-    # Pricing section
-    output += "\n## Pricing"
-    
-    # Get currency
-    currency = full_json.get('financialInfo', {}).get('currencyInfo', {}).get('sellCurrency')
+    # Currency information
+    currency = financial_info.get('currencyInfo', {}).get('sellCurrency')
     if currency:
-        output += f" ({currency})\n"
-    else:
-        output += "\n"
+        output += f"**Currency:** {currency}\n"
+    
+    # Rate type
+    rate_type = financial_info.get('billing', {}).get('rateType')
+    if rate_type and not (isinstance(rate_type, float) and math.isnan(rate_type)):
+        output += f"**Rate Type:** {rate_type}\n"
 
-    # Handle pricing table more dynamically
-    if pricing_periods and 'pricingVariations' in pricing_periods:
-        pricing_variations = pricing_periods.get('pricingVariations', [{}])[0] if pricing_periods.get('pricingVariations') else {}
-        pricing_list = pricing_variations.get('pricing', [])
-        
-        if pricing_list:
-            output += "\n| Group Size | Price per Person |\n| --- | --- |\n"
-            
-            # Sort pricing by numerical value in serviceItem if possible
-            def get_sort_key(item):
-                service_item = item.get('serviceItem', '')
-                match = re.search(r'(\d+)', service_item)
-                return int(match.group(1)) if match else 999
-                
-            pricing_list.sort(key=get_sort_key)
-            
-            # Process adult pricing (PXB items)
-            adult_prices = [p for p in pricing_list if 'PXB' in p.get('serviceItem', '')]
-            child_prices = [p for p in pricing_list if p.get('serviceItem', '').startswith('CH')]
-            
-            for price_item in adult_prices:
-                service_item = price_item.get('serviceItem', '')
-                price = price_item.get('totalPrice', 0)
-                
-                price_str = f"${price:,.2f}"
-                if price == 99999:
-                    price_str += " (possible placeholder)"
-                
-                # Try to extract range information from service item
-                range_match = re.search(r'\((\d+)-(\d+)\)', service_item)
-                if range_match:
-                    min_pax, max_pax = range_match.groups()
-                    if min_pax == max_pax:
-                        output += f"| {min_pax} pax | {price_str} |\n"
-                    else:
-                        output += f"| {min_pax}–{max_pax} pax | {price_str} |\n"
-                else:
-                    # Can't parse the format, just show it as is
-                    output += f"| {service_item} | {price_str} |\n"
-            
-            # Process child pricing if any
-            if child_prices:
-                # Check if all child prices are zero
-                all_zero = all(p.get('totalPrice', 0) == 0 for p in child_prices)
-                all_same = len(set(p.get('totalPrice', 0) for p in child_prices)) == 1
-                
-                if all_zero:
-                    output += f"| Children | $0 (not applicable) |\n"
-                elif all_same and len(child_prices) > 0:
-                    price = child_prices[0].get('totalPrice', 0)
-                    price_str = f"${price:,.2f}"
-                    if price == 99999:
-                        price_str += " (possible placeholder)"
-                    output += f"| Children | {price_str} |\n"
-                else:
-                    # Group child prices by their range number to match adult pricing
-                    for price_item in child_prices:
-                        service_item = price_item.get('serviceItem', '')
-                        price = price_item.get('totalPrice', 0)
-                        
-                        price_str = f"${price:,.2f}"
-                        if price == 99999:
-                            price_str += " (possible placeholder)"
-                        
-                        # Try to extract CH number to match with adult ranges
-                        ch_match = re.search(r'CH(\d+)', service_item)
-                        if ch_match and len(adult_prices) >= int(ch_match.group(1)):
-                            # Get the corresponding adult price range
-                            adult_item = adult_prices[int(ch_match.group(1))-1]
-                            adult_range = re.search(r'\((\d+)-(\d+)\)', adult_item.get('serviceItem', ''))
-                            
-                            if adult_range:
-                                min_pax, max_pax = adult_range.groups()
-                                if min_pax == max_pax:
-                                    output += f"| Children ({min_pax} pax) | {price_str} |\n"
-                                else:
-                                    output += f"| Children ({min_pax}–{max_pax} pax) | {price_str} |\n"
-                            else:
-                                output += f"| {service_item} | {price_str} |\n"
-                        else:
-                            output += f"| {service_item} | {price_str} |\n"
-        else:
-            output += "\nPricing information not available\n"
-    else:
-        output += "\nPricing information not available\n"
+    # Contact Information
+    output += "\n## Contact Information\n"
     
-    # Contact information
-    output += "\n## Contact Info\n"
-    reservations = contacts.get('reservations', {})
+    # Reservation contact
+    reservation_contact = contacts.get('reservationContactName')
+    if reservation_contact:
+        output += f"**Reservations Contact:** {reservation_contact}\n"
     
-    # Clean up contact name (often has extra spaces)
-    contact_name = reservations.get('contactName', 'N/A')
-    if contact_name:
-        contact_name = re.sub(r'\s+', ' ', contact_name).strip()
+    # Email
+    reservation_email = contacts.get('reservationEmail')
+    if reservation_email:
+        # Clean up email
+        reservation_email = reservation_email.strip()
+        if "-" in reservation_email:
+            reservation_email = reservation_email.split("-")[0].strip()
+        output += f"**Reservations Email:** {reservation_email}\n"
     
-    # Clean up multiple emails
-    reservation_email = reservations.get('email', '').strip() if reservations.get('email') else 'N/A'
-    if "-" in reservation_email:
-        # Split by hyphen and get first email
-        reservation_email = reservation_email.split("-")[0].strip()
-        
-    output += f"**Reservations Contact:** {contact_name}\n"
-    output += f"**Email:** {reservation_email}\n"
-    
-    phone = reservations.get('phone', '')
-    if phone:
-        # Format phone number with country code if not already present
-        if not phone.startswith('+'):
-            if phone.startswith('52'):
-                phone = f"+{phone}"
+    # Phone numbers
+    reservation_phone = contacts.get('reservationPhone')
+    if reservation_phone:
+        # Format phone number
+        if not reservation_phone.startswith('+'):
+            if reservation_phone.startswith('52'):
+                reservation_phone = f"+{reservation_phone}"
             else:
-                phone = f"+52 {phone}"
-        output += f"**Phone:** {phone}\n"
-    else:
-        output += "**Phone:** Not provided\n"
-        
-    output += f"**WhatsApp:** {reservations.get('whatsapp', 'Not provided') if reservations.get('whatsapp') else 'Not provided'}\n"
+                reservation_phone = f"+52 {reservation_phone}"
+        output += f"**Reservations Phone:** {reservation_phone}\n"
     
-    # Operations contact if different
-    ops_contact = contacts.get('operations', {}).get('contact')
-    if ops_contact and ops_contact != contact_name:
-        ops_contact = re.sub(r'\s+', ' ', ops_contact).strip()
-        output += f"**Operations Contact:** {ops_contact}\n"
+    operations_phone = contacts.get('operationsPhone')
+    if operations_phone and operations_phone != reservation_phone:
+        if not operations_phone.startswith('+'):
+            if operations_phone.startswith('52'):
+                operations_phone = f"+{operations_phone}"
+            else:
+                operations_phone = f"+52 {operations_phone}"
+        output += f"**Operations Phone:** {operations_phone}\n"
     
-    # Commercial contact if available
-    commercial = contacts.get('commercial')
-    if commercial:
-        output += f"**Commercial Contact:** {commercial}\n"
+    # Operations contact
+    operations_contact = contacts.get('operationsContact')
+    if operations_contact:
+        output += f"**Operations Contact:** {operations_contact}\n"
     
-    # WhatsApp group if available
+    # WhatsApp information
+    whatsapp_reservations = contacts.get('openWhatsappReservations')
+    whatsapp_operations = contacts.get('openWhatsappOperations')
+    if whatsapp_reservations or whatsapp_operations:
+        output += "**WhatsApp:** Available\n"
+    
     whatsapp_group = contacts.get('whatsappGroup')
     if whatsapp_group:
-        output += f"**WhatsApp Group:** Available\n"
+        output += "**WhatsApp Group:** Available\n"
 
-    # Financial information
-    output += "\n## Financial Info\n"
-    currency = full_json.get('financialInfo', {}).get('currencyInfo', {}).get('sellCurrency')
-    output += f"**Currency:** {currency if currency else 'Not specified'}\n"
+    # Financial & Business Information
+    output += "\n## Business Information\n"
     
-    billing_type = full_json.get('financialInfo', {}).get('billing', {}).get('baseInvoiceType')
-    if not billing_type:
-        billing_type = full_json.get('financialInfo', {}).get('billing', {}).get('baseInvoiceType2')
-    output += f"**Billing Type:** {billing_type if billing_type else 'Not specified'}\n"
+    # Banking details
+    banking = financial_info.get('banking', {})
+    bank = banking.get('bank')
+    if bank:
+        output += f"**Bank:** {bank}\n"
     
-    rate_type = full_json.get('financialInfo', {}).get('billing', {}).get('rateType')
-    output += f"**Rate Type:** {rate_type if rate_type else 'Not specified'}\n"
+    account_holder = banking.get('accountHolderName')
+    if account_holder:
+        output += f"**Account Holder:** {account_holder}\n"
     
-    # Reservation guarantee if available
-    guarantee = reservations.get('guarantee')
-    if guarantee:
-        output += f"**Reservation Guarantee:** {guarantee}\n"
+    # Agreement type
+    agreement = financial_info.get('billing', {}).get('agreementContract')
+    if agreement:
+        output += f"**Agreement Type:** {agreement}\n"
     
-    bank = full_json.get('financialInfo', {}).get('banking', {}).get('bank')
-    output += f"**Bank:** {bank if bank else 'Not specified'}\n"
-    
-    # Bank account info - only show if available
-    account = full_json.get('financialInfo', {}).get('banking', {}).get('account')
-    if account:
-        account_holder = full_json.get('financialInfo', {}).get('banking', {}).get('accountHolderName')
-        if account_holder:
-            output += f"**Account Holder:** {account_holder}\n"
-        
-        clabe = full_json.get('financialInfo', {}).get('banking', {}).get('clabe')
-        if clabe:
-            output += f"**CLABE:** {clabe}\n"
-    else:
-        output += "**Bank Account Info:** Not provided\n"
+    # Average margin for business context
+    avg_margin = financial_info.get('billing', {}).get('averageMargin')
+    if avg_margin:
+        output += f"**Average Margin:** {avg_margin}%\n"
 
-    # Add impact information if available
+    # System Integration Status
+    integration_info = []
+    if supplier_info.get('inTourplan') is True:
+        integration_info.append("TourPlan integrated")
+    if tariffs.get('hasTariffs2025TP') is True:
+        integration_info.append("2025 tariffs available")
+    if tariffs.get('product2025'):
+        integration_info.append(f"2025 Status: {tariffs.get('product2025')}")
+    
+    if integration_info:
+        output += "\n## System Status\n"
+        for info in integration_info:
+            output += f"• {info}\n"
+
+    # Provider Classification Information
+    output += "\n## Provider Classification\n"
+    
     impact_group = full_json.get('metadata', {}).get('impactGroup')
     if impact_group:
-        output += f"\n## Impact\n{impact_group}\n"
-        
-    # For accommodations, add property address if available
-    if is_accommodation:
-        address = location.get('address')
-        if address:
-            output += f"\n## Property Address\n{address}\n"
-            
-        google_maps = location.get('googleMapsUrl')
-        if google_maps:
-            output += f"**Google Maps:** {google_maps}\n"
+        output += f"**Impact Category:** {impact_group}\n"
+    
+    supplier_group = supplier_info.get('group')
+    if supplier_group:
+        output += f"**Supplier Group:** {supplier_group}\n"
+    
+    potential_supplier = supplier_info.get('potentialSupplier')
+    if potential_supplier:
+        output += f"**Provider Status:** {potential_supplier}\n"
+    
+    # Add service type for additional classification
+    service_type = service_details.get('serviceType')
+    if service_type:
+        output += f"**Service Type:** {service_type}\n"
+    
+    # Show if provider is complete/ready
+    is_complete = supplier_info.get('isComplete')
+    if is_complete is not None:
+        output += f"**Provider Complete:** {'Yes' if is_complete else 'No'}\n"
+
+    # Last updated information
+    last_update = supplier_info.get('lastUpdate')
+    if last_update:
+        output += f"**Last Updated:** {last_update}\n"
 
     # Add ending divider
     output += "\n---------END OF LODGING-------------------"
@@ -1295,9 +1280,9 @@ def format_transport(experience_data):
                 phone = f"+{phone}"
             else:
                 phone = f"+52 {phone}"
-        output += f"**Phone:** {phone}\n"
+        output += f"**Reservations Phone:** {phone}\n"
     else:
-        output += "**Phone:** Not provided\n"
+        output += "**Reservations Phone:** Not provided\n"
         
     output += f"**WhatsApp:** {reservations.get('whatsapp', 'Not provided') if reservations.get('whatsapp') else 'Not provided'}\n"
     
@@ -1351,10 +1336,30 @@ def format_transport(experience_data):
     else:
         output += "**Bank Account Info:** Not provided\n"
 
-    # Add impact information if available
+    # Provider Classification Information
+    output += "\n## Provider Classification\n"
+    
     impact_group = full_json.get('metadata', {}).get('impactGroup')
     if impact_group:
-        output += f"\n## Impact\n{impact_group}\n"
+        output += f"**Impact Category:** {impact_group}\n"
+    
+    supplier_group = full_json.get('supplierInfo', {}).get('group')
+    if supplier_group:
+        output += f"**Supplier Group:** {supplier_group}\n"
+    
+    potential_supplier = full_json.get('supplierInfo', {}).get('potentialSupplier')
+    if potential_supplier:
+        output += f"**Provider Status:** {potential_supplier}\n"
+    
+    # Add service type for additional classification
+    service_type = service_details.get('serviceType')
+    if service_type:
+        output += f"**Service Type:** {service_type}\n"
+    
+    # Show if provider is complete/ready
+    is_complete = full_json.get('supplierInfo', {}).get('isComplete')
+    if is_complete is not None:
+        output += f"**Provider Complete:** {'Yes' if is_complete else 'No'}\n"
         
     # For accommodations, add property address if available
     if is_accommodation:
