@@ -201,7 +201,7 @@ experiences_agent = Agent[UserInfoContext](
         *Contacto Proveedor:* [Contact Info]
         *Datos Bancarios:* [Banking Details]
 
-    4. If the employee asks a question not related to experiences, transfer back to the triage agent.
+    4. If the employee asks a question related to lodging or transportation, transfer back to the triage agent.
     """,
     model="gpt-4.1-mini-2025-04-14",
     tools=[get_experiences]
@@ -249,7 +249,7 @@ lodging_agent = Agent[UserInfoContext](
         *Contacto Proveedor:* [Contact Info]
         *Datos Bancarios:* [Banking Details]
 
-    3. If the employee asks a question not related to lodging, transfer back to the triage agent.""",
+    3. If the employee asks a question related to experiences or transportation, transfer back to the triage agent.""",
     model="gpt-4.1-mini-2025-04-14",
     tools=[get_lodging]
 )
@@ -298,7 +298,7 @@ transportation_agent = Agent[UserInfoContext](
         *Contacto Proveedor:* [Contact Info]
         *Datos Bancarios:* [Banking Details]
 
-    4. If the employee asks a question not related to transportation, transfer back to the triage agent.
+    4. If the employee asks a question related to experiences or lodging, transfer back to the triage agent.
     """,
     model="gpt-4.1-mini-2025-04-14",
     tools=[get_transportation]
