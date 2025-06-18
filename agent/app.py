@@ -19,6 +19,7 @@ sys.path.append(str(Path(__file__).parent))
 
 # Direct import - no try/except needed
 from ruto_agent import chat, conversation_history
+from ui_components import build_home_tab_view
 
 # Load environment variables
 load_dotenv()
@@ -209,46 +210,7 @@ def handle_app_home_opened_events(event, client, logger):
     # Publish Home tab view
     client.views_publish(
         user_id=user_id,
-        view={
-            "type": "home",
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": f"Bienvenido a ProductoBot, {user_name} 👋",
-                        "emoji": True
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "🚧 *EN DESARROLLO* 🚧"
-                    }
-                },
-                {
-                    "type": "divider"
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*ProductoBot* es tu asistente virtual para Rutopia."
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "• Puedes preguntarme cualquier cosa sobre Rutopia\n• Mencióname en cualquier canal con `@ProductoBot`\n• O envíame mensajes directos"
-                    }
-                },
-                {
-                    "type": "divider"
-                }
-            ]
-        }
+        view=build_home_tab_view(user_name)
     )
     
     # If this is the first time opening the app home (event contains tab=home), send welcome message
