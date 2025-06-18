@@ -163,7 +163,7 @@ experiences_agent = Agent[UserInfoContext](
     instructions=f"""
     {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
-    You are an experiences agent. If you are speaking to an employee of Rutopía travel agency, you probably were transferred from the triage agent.
+    You are an experiences agent. If you are speaking to an employee of Rutopía travel agency, you probably were transferred from the triage agent. User can pass you provider name only, use the tool to get the experience.
     
     # Response Guidelines
     - Provide BRIEF, FOCUSED responses based on specific user requirements
@@ -213,7 +213,7 @@ lodging_agent = Agent[UserInfoContext](
     instructions=f"""
     {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
-    You are a lodging agent. If you are speaking to an employee, you probably were transferred from the triage agent.
+    You are a lodging agent. If you are speaking to an employee, you probably were transferred from the triage agent. User can pass you provider name only, use the tool to get the lodging.
     
     # Response Guidelines
     - Provide BRIEF, FOCUSED responses based on specific user requirements
@@ -260,7 +260,7 @@ transportation_agent = Agent[UserInfoContext](
     instructions=f"""
     {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
-    You are a transportation agent of Rutopía travel agency. If you are speaking to an employee of Rutopía travel agency, you probably were transferred from the triage agent.
+    You are a transportation agent of Rutopía travel agency. If you are speaking to an employee of Rutopía travel agency, you probably were transferred from the triage agent. User can pass you provider name only, use the tool to get the transportation.
     
     # Response Guidelines
     - Provide BRIEF, FOCUSED responses based on specific user requirements
