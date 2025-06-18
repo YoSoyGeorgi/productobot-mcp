@@ -19,15 +19,12 @@ load_dotenv()
 # 1. Define a Pydantic model matching our narrative structure
 # ---------------------------------------
 class NarrativeQuery(BaseModel):
+    Supplier_Name: Optional[str]
     General_Description: Optional[str]
     Service_Details: Optional[str]
     Supplier_Information: Optional[str]
-    Tariff_Information: Optional[str]
     Location: Optional[str]
     Facilities: Optional[str]
-    Availability: Optional[str]
-    Age_Restrictions: Optional[str]
-    Operational_Info: Optional[str]
     State_Code: Optional[Literal[
         "HGO", "ROO", "NAY", "BCS", "GTO", "TAB", "BCN", "YUC", "EMX", "CHI", 
         "JAL", "MXC", "VCZ", "CAM", "PBL", "QRO", "OAX", "MCH", "CHP", "TLX",
@@ -40,24 +37,18 @@ class NarrativeQuery(BaseModel):
 # ---------------------------------------
 def format_structured_narrative_to_text(narrative: NarrativeQuery) -> str:
     lines = []
+    if narrative.Supplier_Name:
+        lines.append(f"Supplier Name: {narrative.Supplier_Name.strip()}")
     if narrative.General_Description:
         lines.append(f"General Description: {narrative.General_Description.strip()}")
     if narrative.Service_Details:
         lines.append(f"Service Details: {narrative.Service_Details.strip()}")
     if narrative.Supplier_Information:
         lines.append(f"Supplier Information: {narrative.Supplier_Information.strip()}")
-    if narrative.Tariff_Information:
-        lines.append(f"Tariff Information: {narrative.Tariff_Information.strip()}")
     if narrative.Location:
         lines.append(f"Location: {narrative.Location.strip()}")
     if narrative.Facilities:
         lines.append(f"Facilities: {narrative.Facilities.strip()}")
-    if narrative.Availability:
-        lines.append(f"Availability: {narrative.Availability.strip()}")
-    if narrative.Age_Restrictions:
-        lines.append(f"Age Restrictions: {narrative.Age_Restrictions.strip()}")
-    if narrative.Operational_Info:
-        lines.append(f"Operational Info: {narrative.Operational_Info.strip()}")
     return "\n".join(lines)
 
 # ---------------------------------------
@@ -102,37 +93,32 @@ def process_user_query(user_query: str, table: str) -> Tuple[str, List[Dict[str,
     table_instructions = {
         "experiences": """
 You are a structured assistant specialized in tourism experiences search. Given a user query, return a JSON object to be used for vector embedding with the following fields exactly:
+- Supplier_Name: Include supplier_name if the user query mentions it.
 - General_Description: A brief summary of the experience.
 - Service_Details: Include fullServiceDescription, serviceDescription, serviceType, destinationName if the user query mentions it.
 - Supplier_Information: Any supplier or group information if the user query mentions it.
-- Tariff_Information: Include pricingYear, tariffProcess, productReady if applicable if the user query mentions it.
 - Location: Use location_address and city if the user query mentions it.
 - Facilities: Any amenities or features if the user query mentions it.
-- Availability: Use availability_response_time if the user query mentions it.
-- Age_Restrictions: Include min/max adult, child, and infant ages if the user query mentions it.
-- Operational_Info: Any other operational notes from the user query.
-- State_Code: Include the state code for the experience.
+- State_Code: Include the state code for the experience. [
+        "HGO", "ROO", "NAY", "BCS", "GTO", "TAB", "BCN", "YUC", "EMX", "CHI", 
+        "JAL", "MXC", "VCZ", "CAM", "PBL", "QRO", "OAX", "MCH", "CHP", "TLX",
+        "SIN", "AGS", "COA", "COL", "DGO", "GRO", "MOR", "NLE", "SLP", "SON", 
+        "TMS", "ZAC"    ]
 
-IMPORTANT: If a piece of information is not present in the user query leave the field blank so we dont match with other experiences.
-""",
-        "lodging": """
-You are a structured assistant specialized in lodging search. Given a user query, return a JSON object with the following fields exactly:
-- General_Description: A brief summary of the accommodation including type, beds, views, etc.
-- Service_Details: Include accommodationType, availableFood, facilitiesServices, numRooms.
-- Location: Use location_address and city if the user query mentions it.
-- Availability: Include available_days and availability_response_time if the user query mentions it.
-- Age_Restrictions: Include min/max adult, child, and infant ages if the user query mentions it.
-- Operational_Info: Any additional notes or tags if the user query mentions it.
 IMPORTANT: If a piece of information is not present in the user query leave the field blank so we dont match with other experiences.
 """,
         "transport": """
 You are a structured assistant specialized in transport search. Given a user query, return a JSON object with the following fields exactly:
+- Supplier_Name: Include supplier_name if the user query mentions it.
 - General_Description: A brief summary of the transport service.
 - Service_Details: Include full_service_description, serviceNotes, duration, serviceType, destinationName if the user query mentions it.
-- Availability: Include available_days and availability_response_time if the user query mentions it.
-- Age_Restrictions: Include min/max adult, child, and infant ages if the user query mentions it.
-- Operational_Info: Include max_persons, tags, supplier_name or supplier_group if the user query mentions it.
-IMPORTANT: If a piece of information is not present in the user query leave the field blank so we dont match with other experiences.
+- Supplier_Information: Any supplier or group information if the user query mentions it.
+- State_Code: Include the state code for the experience. [
+        "HGO", "ROO", "NAY", "BCS", "GTO", "TAB", "BCN", "YUC", "EMX", "CHI", 
+        "JAL", "MXC", "VCZ", "CAM", "PBL", "QRO", "OAX", "MCH", "CHP", "TLX",
+        "SIN", "AGS", "COA", "COL", "DGO", "GRO", "MOR", "NLE", "SLP", "SON", 
+        "TMS", "ZAC"    ]
+IMPORTANT: If a piece of information is not present in the user query leave the field blank so we dont match with other transport services.
 """
     }
     if table not in table_instructions:
@@ -141,7 +127,7 @@ IMPORTANT: If a piece of information is not present in the user query leave the 
     specialized_agent = Agent(
         name=f"{table}_NarrativeQueryAgent",
         instructions=table_instructions[table],
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini-2025-04-14",
         output_type=NarrativeQuery,
         model_settings=ModelSettings(
             temperature=0.3,
