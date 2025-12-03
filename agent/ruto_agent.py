@@ -6,6 +6,7 @@ from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
 from tools.RAG import process_user_query
 from tools.RAG_lodging import process_user_lodging_query
+from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError
 from typing import Optional, Dict, Any, Callable
 import logging
 
@@ -346,88 +347,66 @@ class SlackMessageFormatter:
 async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on", first_name="Usuario"):
     """
     Process a user message and return a response.
-    
-    Args:
-        query: The user's message
-        channel_id: Slack channel ID
-        thread_ts: Slack thread timestamp
-        chatbot_status: "on" for full agent capabilities, "off" for limited mode
-        first_name: User's first name for personalization
-        
-    Returns:
-        A formatted response string
     """
     try:
         logger.info(f"Processing message from {first_name} in channel {channel_id}, thread {thread_ts}")
-        
-        # Create a unique conversation ID from channel and thread
+
         conversation_id = f"{channel_id}_{thread_ts}" if channel_id and thread_ts else "default"
-        
-        # Check if this conversation exists in our history
         is_first_interaction = conversation_id not in conversation_history
-        
-        # Initialize context with Slack-specific information
+
         context = UserInfoContext(
             first_name=first_name,
             channel_id=channel_id,
             thread_ts=thread_ts,
             is_first_interaction=is_first_interaction,
-            chatbot_status=chatbot_status
+            chatbot_status=chatbot_status,
         )
-        
-        # # Get the last agent or use router_agent by default
-        # current_agent = conversation_history.get(conversation_id, {}).get("current_agent", router_agent)
-        
-        current_agent = router_agent
 
-        # Get input items or initialize with empty list
+        current_agent = router_agent
         input_items = conversation_history.get(conversation_id, {}).get("input_items", [])
         input_items.append({"content": query, "role": "user"})
-        
-        # Initialize hooks for tool wait messages
+
         hooks = PreToolMessageHook()
-        
-        # Run the agent based on chatbot status
-        if chatbot_status == "on":
-            logger.info(f"Running agent in ON mode with {len(input_items)} messages in context")
-            result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
-            
-            # Format the response
-            response = ""
-            for new_item in result.new_items:
-                if isinstance(new_item, MessageOutputItem):
-                    response += ItemHelpers.text_message_output(new_item) + "\n"
-            
-            # Store updated conversation state
-            conversation_history[conversation_id] = {
-                "input_items": result.to_input_list(),
-                "current_agent": result.last_agent,
-                "is_first_interaction": False
-            }
-        else:
-            # Process with simpler AI response when in "off" mode
-            logger.info(f"Running agent in OFF mode")
-            result = await Runner.run(router_agent, input_items, context=context)
-            response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
-            
-            # Store the conversation state
-            conversation_history[conversation_id] = {
-                "input_items": result.to_input_list(),
-                "current_agent": router_agent,
-                "is_first_interaction": False
-            }
-        
-        # Format the response for Slack
-        formatted_response = SlackMessageFormatter.format_response(response, context)
-        
-        # Clean up response (trim whitespace, etc.)
-        formatted_response = formatted_response.strip()
-        
+
+        # Try MCP first if configured; optionally enforce MCP-only mode
+        response = ""
+        mcp_only = os.environ.get("MCP_ONLY", "false").lower() in ("1", "true", "yes")
+        mcp_url = os.environ.get("MCP_SERVER_URL")
+        if mcp_url:
+            try:
+                access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+                response = await mcp_query_nl_to_sql(query, access_token=access_token)
+            except MCPClientError as e:
+                logger.warning(f"MCP error: {e}; falling back to agents")
+                if mcp_only:
+                    return "Lo siento, el modo MCP-only está activado y hubo un error consultando MCP. Intenta de nuevo más tarde."
+        elif mcp_only:
+            return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
+
+        if not response and not mcp_only:
+            if chatbot_status == "on":
+                result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
+                for new_item in result.new_items:
+                    if isinstance(new_item, MessageOutputItem):
+                        response += ItemHelpers.text_message_output(new_item) + "\n"
+                conversation_history[conversation_id] = {
+                    "input_items": result.to_input_list(),
+                    "current_agent": result.last_agent,
+                    "is_first_interaction": False,
+                }
+            else:
+                result = await Runner.run(router_agent, input_items, context=context)
+                response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
+                conversation_history[conversation_id] = {
+                    "input_items": result.to_input_list(),
+                    "current_agent": router_agent,
+                    "is_first_interaction": False,
+                }
+
+        formatted_response = SlackMessageFormatter.format_response(response.strip(), context)
         logger.info(f"Generated response for {conversation_id}")
         return formatted_response
-        
     except InputGuardrailTripwireTriggered:
-        logger.warning(f"Guardrail tripwire triggered for {conversation_id}")
         error_msg = "Lo siento, solo puedo ayudar con preguntas relacionadas con la planificación de viajes. Por favor, pregunta sobre viajes, destinos, alojamientos o experiencias."
         return SlackMessageFormatter.format_response(error_msg, context)
     except Exception as e:

@@ -24,11 +24,18 @@ from ui_components import build_home_tab_view
 # Load environment variables
 load_dotenv()
 
-# Initialize the Slack app
-app = App(
-    token=os.environ.get("SLACK_BOT_TOKEN"),
-    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
-)
+# Initialize the Slack app (skip if invalid tokens to allow local testing)
+SLACK_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
+SLACK_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
+app = None
+try:
+    if SLACK_TOKEN and SLACK_SECRET and not SLACK_TOKEN.startswith("xoxb-tu-token") and not SLACK_SECRET.startswith("tu_"):
+        app = App(token=SLACK_TOKEN, signing_secret=SLACK_SECRET)
+    else:
+        logging.warning("Slack tokens invalid or placeholders; skipping Slack App init for local testing.")
+except Exception as e:
+    logging.error(f"Error initializing Slack App: {e}")
+    app = None
 
 # Initialize Supabase client
 supabase: Client = create_client(
@@ -36,15 +43,14 @@ supabase: Client = create_client(
     os.environ.get("SUPABASE_KEY")
 )
 
-# Store bot user ID - initialize immediately instead of waiting for event
 BOT_USER_ID = None
-try:
-    # Get bot's own identity at startup
-    auth_response = app.client.auth_test()
-    BOT_USER_ID = auth_response["user_id"]
-    logging.info(f"Bot initialized with ID: {BOT_USER_ID}")
-except Exception as e:
-    logging.error(f"Error getting bot ID: {e}")
+if app:
+    try:
+        auth_response = app.client.auth_test()
+        BOT_USER_ID = auth_response["user_id"]
+        logging.info(f"Bot initialized with ID: {BOT_USER_ID}")
+    except Exception as e:
+        logging.error(f"Error getting bot ID: {e}")
 
 # Helper function to get user info
 def get_user_info(client, user_id):
@@ -145,163 +151,166 @@ def find_triggering_message(messages, bot_message_ts, bot_id):
     return None
 
 # Event handlers
-@app.event("app_mention")
-def handle_app_mention(event, client, say):
-    try:
-        client.reactions_add(
-            channel=event['channel'],
-            timestamp=event['ts'],
-            name='eyes'
-        )
-    except Exception as e:
-        # Log the error but continue execution
-        logging.warning(f"Could not add reaction: {e}")
-    
-    # Get user info
-    user_id = event.get("user")
-    user_info = get_user_info(client, user_id)
-    
-    # Get thread timestamp - use message ts as thread ts if it's the start of a thread
-    thread_ts = event.get('thread_ts', event['ts'])
-    
-    try:
-        # Pass channel and thread info to maintain conversation context
-        response = sync_chat(
-            chatbot_status="on",
-            query=event['text'],
-            channel_id=event['channel'],
-            thread_ts=thread_ts,
-            first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
-        )
-
-        # Send the response with feedback buttons
-        client.chat_postMessage(
-            channel=event['channel'],
-            thread_ts=thread_ts,
-            text=response,
-            blocks=build_response_blocks(response)
-        )
-    except Exception as e:
-        logging.error(f"Error processing message: {e}", exc_info=True)
-        client.chat_postMessage(
-            channel=event['channel'],
-            thread_ts=thread_ts,
-            text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
-        )
-    finally:
+if app:
+    @app.event("app_mention")
+    def handle_app_mention(event, client, say):
         try:
-            client.reactions_remove(
+            client.reactions_add(
                 channel=event['channel'],
                 timestamp=event['ts'],
                 name='eyes'
             )
         except Exception as e:
             # Log the error but continue execution
-            logging.warning(f"Could not remove reaction: {e}")
-
-@app.event("app_home_opened")
-def handle_app_home_opened_events(event, client, logger):
-    user_id = event["user"]
-    
-    # Get user info
-    user_info = get_user_info(client, user_id)
-    user_name = user_info.get("real_name") or user_info.get("name") or f"<@{user_id}>"
-    
-    # Publish Home tab view
-    client.views_publish(
-        user_id=user_id,
-        view=build_home_tab_view(user_name)
-    )
-    
-    # If this is the first time opening the app home (event contains tab=home), send welcome message
-    if event.get("tab") == "home" and not event.get("view"):
+            logging.warning(f"Could not add reaction: {e}")
+        
+        # Get user info
+        user_id = event.get("user")
+        user_info = get_user_info(client, user_id)
+        
+        # Get thread timestamp - use message ts as thread ts if it's the start of a thread
+        thread_ts = event.get('thread_ts', event['ts'])
+        
         try:
-            # Open a DM with the user if not already open
+            # Pass channel and thread info to maintain conversation context
+            response = sync_chat(
+                chatbot_status="on",
+                query=event['text'],
+                channel_id=event['channel'],
+                thread_ts=thread_ts,
+                first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
+            )
+
+            # Send the response with feedback buttons
             client.chat_postMessage(
-                channel=user_id,
-                text=f"¡Hola <@{user_id}>! Soy ProductoBot, tu asistente virtual para Rutopia. Estoy aquí para ayudarte con cualquier pregunta que tengas. No dudes en preguntarme lo que necesites."
+                channel=event['channel'],
+                thread_ts=thread_ts,
+                text=response,
+                blocks=build_response_blocks(response)
             )
         except Exception as e:
-            logger.error(f"Error sending welcome message: {e}")
+            logging.error(f"Error processing message: {e}", exc_info=True)
+            client.chat_postMessage(
+                channel=event['channel'],
+                thread_ts=thread_ts,
+                text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+            )
+        finally:
+            try:
+                client.reactions_remove(
+                    channel=event['channel'],
+                    timestamp=event['ts'],
+                    name='eyes'
+                )
+            except Exception as e:
+                # Log the error but continue execution
+                logging.warning(f"Could not remove reaction: {e}")
 
-@app.event("message")
-def handle_message_events(event, client, logger):
-    # Ignore messages from bots to prevent potential loops
-    if event.get("bot_id") or event.get("subtype") == "bot_message":
-        return
+if app:
+    @app.event("app_home_opened")
+    def handle_app_home_opened_events(event, client, logger):
+        user_id = event["user"]
+        
+        # Get user info
+        user_info = get_user_info(client, user_id)
+        user_name = user_info.get("real_name") or user_info.get("name") or f"<@{user_id}>"
+        
+        # Publish Home tab view
+        client.views_publish(
+            user_id=user_id,
+            view=build_home_tab_view(user_name)
+        )
+        
+        # If this is the first time opening the app home (event contains tab=home), send welcome message
+        if event.get("tab") == "home" and not event.get("view"):
+            try:
+                # Open a DM with the user if not already open
+                client.chat_postMessage(
+                    channel=user_id,
+                    text=f"¡Hola <@{user_id}>! Soy ProductoBot, tu asistente virtual para Rutopia. Estoy aquí para ayudarte con cualquier pregunta que tengas. No dudes en preguntarme lo que necesites."
+                )
+            except Exception as e:
+                logger.error(f"Error sending welcome message: {e}")
 
-    # Get the message text
-    message_text = event.get("text", "")
-    
-    # Get channel type and check if in a thread
-    channel_type = event.get("channel_type")
-    is_in_thread = event.get("thread_ts") is not None
-    thread_ts = event.get('thread_ts')
-    
-    # Process direct messages (IM) always
-    should_process = channel_type == "im"
-    
-    # Check for bot mentions
-    bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
-    is_bot_mentioned = bot_mention and bot_mention in message_text
-    
-    # Track threads where the bot has been tagged to respond without tagging again
-    # Create a unique thread identifier
-    thread_id = f"{event['channel']}_{thread_ts}" if is_in_thread and thread_ts else None
-    
-    # For messages in threads, process if no other users are mentioned (except the bot)
-    if is_in_thread and not should_process:
-        # Check if message mentions any users other than the bot
-        mentions_other_user = False
+if app:
+    @app.event("message")
+    def handle_message_events(event, client, logger):
+        # Ignore messages from bots to prevent potential loops
+        if event.get("bot_id") or event.get("subtype") == "bot_message":
+            return
+
+        # Get the message text
+        message_text = event.get("text", "")
         
-        # Look for user mentions pattern <@U...>
-        mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
+        # Get channel type and check if in a thread
+        channel_type = event.get("channel_type")
+        is_in_thread = event.get("thread_ts") is not None
+        thread_ts = event.get('thread_ts')
         
-        # If there are mentions and any mention is not the bot, skip this message
-        if mentions:
-            for mention in mentions:
-                if mention != BOT_USER_ID:
-                    mentions_other_user = True
-                    break
+        # Process direct messages (IM) always
+        should_process = channel_type == "im"
+        
+        # Check for bot mentions
+        bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
+        is_bot_mentioned = bot_mention and bot_mention in message_text
+        
+        # Track threads where the bot has been tagged to respond without tagging again
+        # Create a unique thread identifier
+        thread_id = f"{event['channel']}_{thread_ts}" if is_in_thread and thread_ts else None
+        
+        # For messages in threads, process if no other users are mentioned (except the bot)
+        if is_in_thread and not should_process:
+            # Check if message mentions any users other than the bot
+            mentions_other_user = False
             
-            # If bot is explicitly mentioned, we should process regardless of other mentions
-            if is_bot_mentioned:
-                should_process = True
+            # Look for user mentions pattern <@U...>
+            mentions = re.findall(r"<@(U[A-Z0-9]+)>", message_text)
+            
+            # If there are mentions and any mention is not the bot, skip this message
+            if mentions:
+                for mention in mentions:
+                    if mention != BOT_USER_ID:
+                        mentions_other_user = True
+                        break
+                
+                # If bot is explicitly mentioned, we should process regardless of other mentions
+                if is_bot_mentioned:
+                    should_process = True
+                else:
+                    should_process = not mentions_other_user
             else:
-                should_process = not mentions_other_user
-        else:
-            # No mentions in the message
-            # Check if this is a thread where the bot was previously mentioned
-            if thread_id and thread_id in conversation_history:
-                should_process = True
-            # If bot not explicitly mentioned and no history, don't process
-            else:
-                should_process = False
-    # For messages in channels (not in thread), only process if bot is mentioned
-    elif not is_in_thread and not should_process:
-        should_process = is_bot_mentioned
-    
-    # If we shouldn't process this message, return
-    if not should_process:
-        return
+                # No mentions in the message
+                # Check if this is a thread where the bot was previously mentioned
+                if thread_id and thread_id in conversation_history:
+                    should_process = True
+                # If bot not explicitly mentioned and no history, don't process
+                else:
+                    should_process = False
+        # For messages in channels (not in thread), only process if bot is mentioned
+        elif not is_in_thread and not should_process:
+            should_process = is_bot_mentioned
+        
+        # If we shouldn't process this message, return
+        if not should_process:
+            return
 
-    # Get user info
-    user_id = event.get("user")
-    user_info = get_user_info(client, user_id)
-    
-    # Get thread timestamp - use message ts as thread ts if it's the start of a thread
-    thread_ts = event.get('thread_ts', event['ts'])
-    
-    # React to show the bot is processing
-    client.reactions_add(
-        channel=event['channel'],
-        timestamp=event['ts'],
-        name='eyes'
-    )
-    
-    try:
-        # Process the message with the chat function
-        response = sync_chat(
+        # Get user info
+        user_id = event.get("user")
+        user_info = get_user_info(client, user_id)
+        
+        # Get thread timestamp - use message ts as thread ts if it's the start of a thread
+        thread_ts = event.get('thread_ts', event['ts'])
+        
+        # React to show the bot is processing
+        client.reactions_add(
+            channel=event['channel'],
+            timestamp=event['ts'],
+            name='eyes'
+        )
+        
+        try:
+            # Process the message with the chat function
+            response = sync_chat(
             chatbot_status="on",
             query=event['text'],
             channel_id=event['channel'],
@@ -309,33 +318,34 @@ def handle_message_events(event, client, logger):
             first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
         )
 
-        # Send the response with feedback buttons
-        client.chat_postMessage(
-            channel=event['channel'],
-            thread_ts=thread_ts,
-            text=response,
-            blocks=build_response_blocks(response)
-        )
-    except Exception as e:
-        logging.error(f"Error processing message: {e}", exc_info=True)
-        client.chat_postMessage(
-            channel=event['channel'],
-            thread_ts=thread_ts,
-            text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
-        )
-    finally:
-        # Remove the reaction
-        client.reactions_remove(
-            channel=event['channel'],
-            timestamp=event['ts'],
-            name='eyes'
-        )
+            # Send the response with feedback buttons
+            client.chat_postMessage(
+                channel=event['channel'],
+                thread_ts=thread_ts,
+                text=response,
+                blocks=build_response_blocks(response)
+            )
+        except Exception as e:
+            logging.error(f"Error processing message: {e}", exc_info=True)
+            client.chat_postMessage(
+                channel=event['channel'],
+                thread_ts=thread_ts,
+                text="Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+            )
+        finally:
+            # Remove the reaction
+            client.reactions_remove(
+                channel=event['channel'],
+                timestamp=event['ts'],
+                name='eyes'
+            )
 
 # Add button interaction handlers
-@app.action("feedback_positive")
-def handle_positive_feedback(ack, body, client, logger):
-    ack()
-    try:
+if app:
+    @app.action("feedback_positive")
+    def handle_positive_feedback(ack, body, client, logger):
+        ack()
+        try:
         user_id = body["user"]["id"]
         channel_id = body["channel"]["id"]
         message_ts = body["message"]["ts"]
@@ -406,10 +416,11 @@ def handle_positive_feedback(ack, body, client, logger):
     except Exception as e:
         logger.error(f"Error processing positive feedback: {e}", exc_info=True)
 
-@app.action("feedback_negative")
-def handle_negative_feedback(ack, body, client, logger):
-    ack()
-    try:
+if app:
+    @app.action("feedback_negative")
+    def handle_negative_feedback(ack, body, client, logger):
+        ack()
+        try:
         user_id = body["user"]["id"]
         channel_id = body["channel"]["id"]
         message_ts = body["message"]["ts"]
@@ -488,10 +499,11 @@ def handle_negative_feedback(ack, body, client, logger):
     except Exception as e:
         logger.error(f"Error opening feedback modal: {e}", exc_info=True)
 
-@app.view("feedback_modal")
-def handle_feedback_submission(ack, body, client, logger):
-    ack()
-    try:
+if app:
+    @app.view("feedback_modal")
+    def handle_feedback_submission(ack, body, client, logger):
+        ack()
+        try:
         user_id = body["user"]["id"]
         feedback_text = body["view"]["state"]["values"]["feedback_input"]["feedback_text"]["value"]
         
@@ -677,9 +689,8 @@ def extract_message_text(message):
     
     return ""
 
-# Initialize the FastAPI app
 api = FastAPI(title="ProductoBot API")
-handler = SlackRequestHandler(app)
+handler = SlackRequestHandler(app) if app else None
 
 logging.basicConfig(level=logging.INFO)
 
@@ -695,10 +706,14 @@ async def endpoint(request: Request, background_tasks: BackgroundTasks):
             return {"type": "http.request", "body": body, "more_body": False}
         request = Request(request.scope, receive=receive)
         
-        logging.info("Handling request with SlackRequestHandler...")
-        response = await handler.handle(request)
-        logging.info("Request handled successfully by SlackRequestHandler.")
-        return response
+        if handler:
+            logging.info("Handling request with SlackRequestHandler...")
+            response = await handler.handle(request)
+            logging.info("Request handled successfully by SlackRequestHandler.")
+            return response
+        else:
+            logging.warning("Slack handler unavailable (tokens invalid).")
+            return Response(status_code=503, content="Slack handler unavailable for local testing.")
     except Exception as e:
         logging.exception("Error handling /slack/events request")
         raise HTTPException(status_code=500, detail="Internal Server Error")
