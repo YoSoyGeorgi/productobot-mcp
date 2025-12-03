@@ -694,6 +694,10 @@ handler = SlackRequestHandler(app) if app else None
 
 logging.basicConfig(level=logging.INFO)
 
+@api.get("/")
+def root():
+    return {"message": "ProductoBot API is running", "status": "healthy"}
+
 @api.post("/slack/events")
 async def endpoint(request: Request, background_tasks: BackgroundTasks):
     logging.info("Received request on /slack/events")
