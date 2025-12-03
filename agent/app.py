@@ -346,224 +346,224 @@ if app:
     def handle_positive_feedback(ack, body, client, logger):
         ack()
         try:
-        user_id = body["user"]["id"]
-        channel_id = body["channel"]["id"]
-        message_ts = body["message"]["ts"]
-        thread_ts = body["message"].get("thread_ts", message_ts)
-        
-        # Get the bot message text
-        bot_message_text = extract_message_text(body["message"])
-        
-        # Update the message to show positive feedback was selected
-        original_response_text = None
-        for block in body["message"].get("blocks", []):
-            if block.get("type") == "section" and block.get("text") and "¿Te fue útil esta respuesta?" not in block.get("text", {}).get("text", ""):
-                original_response_text = block["text"]["text"]
-                break
-        
-        if original_response_text:
-            updated_blocks = build_response_blocks_with_selection(original_response_text, "positive")
-            client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                text=original_response_text,
-                blocks=updated_blocks
-            )
-        
-        # Get thread context to find user query
-        thread_response = client.conversations_replies(
-            channel=channel_id,
-            ts=thread_ts,
-            limit=100
-        )
-        
-        user_query = None
-        thread_json = None
-        
-        if thread_response and thread_response.get("messages"):
-            thread_json = thread_response["messages"]
-            user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
-        
-        # Store positive feedback
-        store_feedback(
-            user_id=user_id,
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-            message_ts=message_ts,
-            message_text=bot_message_text,
-            query_text=user_query,
-            thread_json=thread_json,
-            feedback_type="positive"
-        )
-        
-        # Send acknowledgment
-        positive_responses = [
-            f"¡Gracias por tu feedback positivo, <@{user_id}>! 😊",
-            f"<@{user_id}>, me alegra saber que te fue útil la respuesta 🎉",
-            f"¡Excelente, <@{user_id}>! Gracias por confirmar que la información fue útil ✨",
-            f"<@{user_id}>, tu feedback positivo nos motiva a seguir mejorando 🚀",
-            f"¡Perfecto, <@{user_id}>! Me alegra haber podido ayudarte 👍"
-        ]
-        
-        client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
-            text=random.choice(positive_responses)
-        )
-        
-        logger.info(f"Positive feedback processed for user {user_id}")
-        
-    except Exception as e:
-        logger.error(f"Error processing positive feedback: {e}", exc_info=True)
-
-if app:
-    @app.action("feedback_negative")
-    def handle_negative_feedback(ack, body, client, logger):
-        ack()
-        try:
-        user_id = body["user"]["id"]
-        channel_id = body["channel"]["id"]
-        message_ts = body["message"]["ts"]
-        thread_ts = body["message"].get("thread_ts", message_ts)
-        
-        # Update the message to show negative feedback was selected
-        original_response_text = None
-        for block in body["message"].get("blocks", []):
-            if block.get("type") == "section" and block.get("text") and "¿Te fue útil esta respuesta?" not in block.get("text", {}).get("text", ""):
-                original_response_text = block["text"]["text"]
-                break
-        
-        if original_response_text:
-            updated_blocks = build_response_blocks_with_selection(original_response_text, "negative")
-            client.chat_update(
-                channel=channel_id,
-                ts=message_ts,
-                text=original_response_text,
-                blocks=updated_blocks
-            )
-        
-        # Open modal for detailed feedback
-        client.views_open(
-            trigger_id=body["trigger_id"],
-            view={
-                "type": "modal",
-                "callback_id": "feedback_modal",
-                "title": {
-                    "type": "plain_text",
-                    "text": "Feedback"
-                },
-                "submit": {
-                    "type": "plain_text",
-                    "text": "Enviar"
-                },
-                "close": {
-                    "type": "plain_text",
-                    "text": "Cancelar"
-                },
-                "private_metadata": json.dumps({
-                    "channel_id": channel_id,
-                    "message_ts": message_ts,
-                    "thread_ts": thread_ts
-                }),
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "Cuéntanos qué faltó o qué puedo mejorar 🛠️"
-                        }
-                    },
-                    {
-                        "type": "input",
-                        "block_id": "feedback_input",
-                        "element": {
-                            "type": "plain_text_input",
-                            "action_id": "feedback_text",
-                            "multiline": True,
-                            "placeholder": {
-                                "type": "plain_text",
-                                "text": "Comparte tus comentarios aquí..."
-                            }
-                        },
-                        "label": {
-                            "type": "plain_text",
-                            "text": "Tu feedback"
-                        }
-                    }
-                ]
-            }
-        )
-        
-        logger.info(f"Feedback modal opened for user {user_id}")
-        
-    except Exception as e:
-        logger.error(f"Error opening feedback modal: {e}", exc_info=True)
-
-if app:
-    @app.view("feedback_modal")
-    def handle_feedback_submission(ack, body, client, logger):
-        ack()
-        try:
-        user_id = body["user"]["id"]
-        feedback_text = body["view"]["state"]["values"]["feedback_input"]["feedback_text"]["value"]
-        
-        # Get metadata
-        metadata = json.loads(body["view"]["private_metadata"])
-        channel_id = metadata["channel_id"]
-        message_ts = metadata["message_ts"]
-        thread_ts = metadata["thread_ts"]
-        
-        # Get the bot message text and thread context
-        bot_message_text = ""
-        user_query = None
-        thread_json = None
-        
-        try:
-            # Get thread context
+            user_id = body["user"]["id"]
+            channel_id = body["channel"]["id"]
+            message_ts = body["message"]["ts"]
+            thread_ts = body["message"].get("thread_ts", message_ts)
+            
+            # Get the bot message text
+            bot_message_text = extract_message_text(body["message"])
+            
+            # Update the message to show positive feedback was selected
+            original_response_text = None
+            for block in body["message"].get("blocks", []):
+                if block.get("type") == "section" and block.get("text") and "¿Te fue útil esta respuesta?" not in block.get("text", {}).get("text", ""):
+                    original_response_text = block["text"]["text"]
+                    break
+            
+            if original_response_text:
+                updated_blocks = build_response_blocks_with_selection(original_response_text, "positive")
+                client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    text=original_response_text,
+                    blocks=updated_blocks
+                )
+            
+            # Get thread context to find user query
             thread_response = client.conversations_replies(
                 channel=channel_id,
                 ts=thread_ts,
                 limit=100
             )
             
+            user_query = None
+            thread_json = None
+            
             if thread_response and thread_response.get("messages"):
                 thread_json = thread_response["messages"]
                 user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
-                
-                # Find the bot message
-                for msg in thread_json:
-                    if msg.get("ts") == message_ts:
-                        bot_message_text = extract_message_text(msg)
-                        break
+            
+            # Store positive feedback
+            store_feedback(
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                message_ts=message_ts,
+                message_text=bot_message_text,
+                query_text=user_query,
+                thread_json=thread_json,
+                feedback_type="positive"
+            )
+            
+            # Send acknowledgment
+            positive_responses = [
+                f"¡Gracias por tu feedback positivo, <@{user_id}>! 😊",
+                f"<@{user_id}>, me alegra saber que te fue útil la respuesta 🎉",
+                f"¡Excelente, <@{user_id}>! Gracias por confirmar que la información fue útil ✨",
+                f"<@{user_id}>, tu feedback positivo nos motiva a seguir mejorando 🚀",
+                f"¡Perfecto, <@{user_id}>! Me alegra haber podido ayudarte 👍"
+            ]
+            
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=random.choice(positive_responses)
+            )
+            
+            logger.info(f"Positive feedback processed for user {user_id}")
+            
         except Exception as e:
-            logger.error(f"Error getting thread context: {e}")
-        
-        # Store negative feedback with detailed comments
-        store_feedback(
-            user_id=user_id,
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-            message_ts=message_ts,
-            message_text=bot_message_text,
-            query_text=user_query,
-            thread_json=thread_json,
-            feedback_type="negative",
-            feedback_comment=feedback_text
-        )
-        
-        # Send acknowledgment with the feedback content
-        feedback_message = f"Gracias por tu feedback detallado, <@{user_id}>. Tomaremos en cuenta tus comentarios para mejorar nuestro servicio 🙏\n\n---\n**Feedback recibido:**\n{feedback_text}"
-        
-        client.chat_postMessage(
-            channel=channel_id,
-            thread_ts=thread_ts,
-            text=feedback_message
-        )
-        
-        logger.info(f"Detailed feedback submitted by user {user_id}: {feedback_text}")
-        
-    except Exception as e:
-        logger.error(f"Error processing feedback submission: {e}", exc_info=True)
+            logger.error(f"Error processing positive feedback: {e}", exc_info=True)
+
+if app:
+    @app.action("feedback_negative")
+    def handle_negative_feedback(ack, body, client, logger):
+        ack()
+        try:
+            user_id = body["user"]["id"]
+            channel_id = body["channel"]["id"]
+            message_ts = body["message"]["ts"]
+            thread_ts = body["message"].get("thread_ts", message_ts)
+            
+            # Update the message to show negative feedback was selected
+            original_response_text = None
+            for block in body["message"].get("blocks", []):
+                if block.get("type") == "section" and block.get("text") and "¿Te fue útil esta respuesta?" not in block.get("text", {}).get("text", ""):
+                    original_response_text = block["text"]["text"]
+                    break
+            
+            if original_response_text:
+                updated_blocks = build_response_blocks_with_selection(original_response_text, "negative")
+                client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    text=original_response_text,
+                    blocks=updated_blocks
+                )
+            
+            # Open modal for detailed feedback
+            client.views_open(
+                trigger_id=body["trigger_id"],
+                view={
+                    "type": "modal",
+                    "callback_id": "feedback_modal",
+                    "title": {
+                        "type": "plain_text",
+                        "text": "Feedback"
+                    },
+                    "submit": {
+                        "type": "plain_text",
+                        "text": "Enviar"
+                    },
+                    "close": {
+                        "type": "plain_text",
+                        "text": "Cancelar"
+                    },
+                    "private_metadata": json.dumps({
+                        "channel_id": channel_id,
+                        "message_ts": message_ts,
+                        "thread_ts": thread_ts
+                    }),
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "Cuéntanos qué faltó o qué puedo mejorar 🛠️"
+                            }
+                        },
+                        {
+                            "type": "input",
+                            "block_id": "feedback_input",
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "feedback_text",
+                                "multiline": True,
+                                "placeholder": {
+                                    "type": "plain_text",
+                                    "text": "Comparte tus comentarios aquí..."
+                                }
+                            },
+                            "label": {
+                                "type": "plain_text",
+                                "text": "Tu feedback"
+                            }
+                        }
+                    ]
+                }
+            )
+            
+            logger.info(f"Feedback modal opened for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error opening feedback modal: {e}", exc_info=True)
+
+if app:
+    @app.view("feedback_modal")
+    def handle_feedback_submission(ack, body, client, logger):
+        ack()
+        try:
+            user_id = body["user"]["id"]
+            feedback_text = body["view"]["state"]["values"]["feedback_input"]["feedback_text"]["value"]
+            
+            # Get metadata
+            metadata = json.loads(body["view"]["private_metadata"])
+            channel_id = metadata["channel_id"]
+            message_ts = metadata["message_ts"]
+            thread_ts = metadata["thread_ts"]
+            
+            # Get the bot message text and thread context
+            bot_message_text = ""
+            user_query = None
+            thread_json = None
+            
+            try:
+                # Get thread context
+                thread_response = client.conversations_replies(
+                    channel=channel_id,
+                    ts=thread_ts,
+                    limit=100
+                )
+                
+                if thread_response and thread_response.get("messages"):
+                    thread_json = thread_response["messages"]
+                    user_query = find_triggering_message(thread_json, message_ts, BOT_USER_ID)
+                    
+                    # Find the bot message
+                    for msg in thread_json:
+                        if msg.get("ts") == message_ts:
+                            bot_message_text = extract_message_text(msg)
+                            break
+            except Exception as e:
+                logger.error(f"Error getting thread context: {e}")
+            
+            # Store negative feedback with detailed comments
+            store_feedback(
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                message_ts=message_ts,
+                message_text=bot_message_text,
+                query_text=user_query,
+                thread_json=thread_json,
+                feedback_type="negative",
+                feedback_comment=feedback_text
+            )
+            
+            # Send acknowledgment with the feedback content
+            feedback_message = f"Gracias por tu feedback detallado, <@{user_id}>. Tomaremos en cuenta tus comentarios para mejorar nuestro servicio 🙏\n\n---\n**Feedback recibido:**\n{feedback_text}"
+            
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=feedback_message
+            )
+            
+            logger.info(f"Detailed feedback submitted by user {user_id}: {feedback_text}")
+            
+        except Exception as e:
+            logger.error(f"Error processing feedback submission: {e}", exc_info=True)
 
 # Helper function to add feedback buttons to messages
 def add_feedback_buttons():
