@@ -35,7 +35,7 @@ REGLAS IMPORTANTES:
 Responde SOLO con la consulta SQL, sin explicaciones ni formato markdown."""
 
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini-2025-04-14",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
@@ -77,7 +77,7 @@ Los resultados de la base de datos son:
 Presenta esta información de forma natural y útil para el usuario."""
     
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini-2025-04-14",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
@@ -217,12 +217,12 @@ async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None) -
 
 Tu tarea es:
 1. Extraer la información relevante del JSON
-2. Presentarla de forma natural y conversacional en español
-3. **IMPORTANTE: Debes mostrar TODOS los resultados, no solo uno o algunos. Si hay 3 resultados, muestra los 3. Si hay 10, muestra los 10.**
-4. Para cada resultado, destacar: nombre del producto/servicio, ubicación, descripción breve, duración, precio (si está disponible)
-5. Usar emojis relevantes (🏨 🍽️ 🎭 🏞️ 🍷 🧀 ⏱️ 💰)
-6. No mencionar campos técnicos (id, embeddings, json, vector_embedding, full_json, etc.)
-7. Formato sugerido: Lista numerada con cada experiencia/producto"""
+2. Presentarla de forma CONCISA en español (máximo 2500 caracteres total)
+3. **IMPORTANTE: Si hay muchos resultados (más de 5), muestra solo los primeros 5 y menciona cuántos hay en total**
+4. Para cada resultado: nombre, ubicación breve, descripción corta (1-2 líneas), duración, precio
+5. Usar emojis relevantes pero con moderación (🚗 🏨 🍽️ 🎭 🏞️ 💰 ⏱️)
+6. No mencionar campos técnicos (id, embeddings, json, etc.)
+7. Formato: Lista numerada, cada item máximo 3-4 líneas"""
 
             user_prompt = f"""El usuario preguntó: "{prompt}"
 
@@ -230,14 +230,15 @@ Respuesta completa de la base de datos:
 {raw_response[:15000]}
 
 INSTRUCCIONES CRÍTICAS:
-1. Busca TODOS los objetos JSON en la respuesta (pueden estar dentro de bloques <untrusted-data> o arrays)
-2. Por cada objeto encontrado, extrae y presenta: nombre, ubicación, descripción, duración, precio
-3. Si encuentras múltiples resultados (2, 3, 5, etc.), DEBES mostrarlos TODOS numerados
-4. NO digas "no hay resultados" si ves datos JSON
-5. NO resumas ni omitas resultados - muestra cada uno completo"""
+1. Busca los objetos JSON en la respuesta (dentro de bloques <untrusted-data> o arrays)
+2. Si hay más de 5 resultados, muestra SOLO los primeros 5 y agrega: "_(Y X resultados más...)_"
+3. Por cada resultado: nombre, ubicación breve, descripción corta, duración, precio
+4. Mantén cada item en 3-4 líneas máximo
+5. NO digas "no hay resultados" si ves datos JSON
+6. Respuesta total: máximo 2500 caracteres"""
 
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4.1-mini-2025-04-14",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
