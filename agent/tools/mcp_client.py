@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import openai
 from openai import AsyncOpenAI
 import logging
+from .schema_definitions import SCHEMA_DEFINITIONS
 
 load_dotenv()
 
@@ -147,25 +148,8 @@ async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None) -
         import logging
         logger = logging.getLogger(__name__)
         
-        # Get schema information first
-        list_tables_payload = {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": "list_tables",
-                "arguments": {}
-            }
-        }
-        schema_resp = await client.post(MCP_URL, headers=headers, content=json.dumps(list_tables_payload))
-        schema_info = ""
-        if schema_resp.status_code == 200:
-            schema_data = schema_resp.json()
-            schema_content = schema_data.get("result", {}).get("content", [])
-            for part in schema_content:
-                if isinstance(part, dict) and part.get("type") == "text":
-                    schema_info = part.get("text", "")
-                    break
+        # Use the provided schema definitions
+        schema_info = SCHEMA_DEFINITIONS
 
         # Translate natural language to SQL using OpenAI
         logger.info(f"Translating query: {prompt}")
