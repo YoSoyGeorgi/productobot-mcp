@@ -32,6 +32,7 @@ REGLAS IMPORTANTES:
 3. Para la tabla 'experiences', usa: SELECT id, narrative_text, service_type, city, supplier_name, destination_name, duration FROM experiences
 4. IMPORTANTE: Las tablas 'lodging', 'experiences' y 'transport' NO tienen columna 'is_deleted'. NO la incluyas en el WHERE.
 5. Usa ILIKE con '%término%' para búsquedas de texto.
+6. Para nombres de lugares compuestos (ej. "Xpu Ha"), reemplaza los espacios con '%' en la búsqueda (ej. '%Xpu%Ha%') para encontrar variaciones con guiones o espacios.
 
 Responde SOLO con la consulta SQL, sin explicaciones ni formato markdown."""
 
