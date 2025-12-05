@@ -28,10 +28,10 @@ La base de datos tiene tablas para experiencias turísticas, alojamientos y tran
 
 REGLAS IMPORTANTES:
 1. NUNCA incluyas columnas de vectores/embeddings en el SELECT (vector_embedding, embeddings, embedding, full_json, etc.)
-2. Primero revisa el esquema para saber qué columnas existen en cada tabla
-3. Para la tabla 'experiences', usa: SELECT id, experience_name, description, location, adult_price, child_price, duration, supplier_name, destination_name, google_maps_url FROM experiences
-4. NO uses columnas que no existan (como 'name' o 'price' si no están en el esquema)
-5. Usa ILIKE con '%término%' para búsquedas de texto
+2. Primero revisa el esquema para saber qué columnas existen en cada tabla.
+3. Para la tabla 'experiences', usa: SELECT id, narrative_text, service_type, city, supplier_name, destination_name, duration FROM experiences
+4. NO uses columnas que no existan (como 'name', 'price', 'description', 'is_deleted' si no están en el esquema de esa tabla específica).
+5. Usa ILIKE con '%término%' para búsquedas de texto.
 
 Responde SOLO con la consulta SQL, sin explicaciones ni formato markdown."""
 
