@@ -302,11 +302,14 @@ if app:
         thread_ts = event.get('thread_ts', event['ts'])
         
         # React to show the bot is processing
-        client.reactions_add(
-            channel=event['channel'],
-            timestamp=event['ts'],
-            name='eyes'
-        )
+        try:
+            client.reactions_add(
+                channel=event['channel'],
+                timestamp=event['ts'],
+                name='eyes'
+            )
+        except Exception as e:
+            logging.warning(f"Could not add reaction: {e}")
         
         try:
             # Process the message with the chat function
@@ -334,11 +337,14 @@ if app:
             )
         finally:
             # Remove the reaction
-            client.reactions_remove(
-                channel=event['channel'],
-                timestamp=event['ts'],
-                name='eyes'
-            )
+            try:
+                client.reactions_remove(
+                    channel=event['channel'],
+                    timestamp=event['ts'],
+                    name='eyes'
+                )
+            except Exception as e:
+                logging.warning(f"Could not remove reaction: {e}")
 
 # Add button interaction handlers
 if app:
@@ -640,6 +646,12 @@ def add_feedback_buttons_with_selection(selected_feedback):
 
 # Helper function to build message blocks with response and feedback buttons
 def build_response_blocks(response_text):
+    # Slack has a 3000 character limit per text block
+    MAX_CHARS = 2900  # Leave some margin
+    
+    if len(response_text) > MAX_CHARS:
+        response_text = response_text[:MAX_CHARS] + "...\n\n_Respuesta truncada. Para ver más detalles, intenta hacer una consulta más específica._"
+    
     blocks = [
         {
             "type": "section",
