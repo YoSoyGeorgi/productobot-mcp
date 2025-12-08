@@ -394,15 +394,39 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
 
         if not response and not mcp_only:
             if chatbot_status == "on":
-                result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
-                for new_item in result.new_items:
-                    if isinstance(new_item, MessageOutputItem):
-                        response += ItemHelpers.text_message_output(new_item) + "\n"
-                conversation_history[conversation_id] = {
-                    "input_items": result.to_input_list(),
-                    "current_agent": result.last_agent,
-                    "is_first_interaction": False,
-                }
+                # Loop to handle handoffs within the same turn
+                max_turns = 5
+                turns = 0
+                while turns < max_turns:
+                    result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
+                    
+                    # Collect text responses
+                    for new_item in result.new_items:
+                        if isinstance(new_item, MessageOutputItem):
+                            response += ItemHelpers.text_message_output(new_item) + "\n"
+                    
+                    # Update history
+                    conversation_history[conversation_id] = {
+                        "input_items": result.to_input_list(),
+                        "current_agent": result.last_agent,
+                        "is_first_interaction": False,
+                    }
+                    
+                    # Check for handoff
+                    if result.last_agent != current_agent:
+                        logger.info(f"Handoff detected from {current_agent.name} to {result.last_agent.name}")
+                        current_agent = result.last_agent
+                        # Update input items for the next run in the loop
+                        input_items = conversation_history[conversation_id]["input_items"]
+                        turns += 1
+                    else:
+                        # No handoff, we are done for this turn
+                        break
+                
+                # Fallback if response is still empty
+                if not response.strip():
+                    logger.warning("Agent produced empty response after execution")
+                    response = "Lo siento, no encontré información específica sobre eso. ¿Podrías intentar reformular tu pregunta?"
             else:
                 result = await Runner.run(router_agent, input_items, context=context)
                 response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
