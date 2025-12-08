@@ -380,11 +380,11 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                 mcp_response = await mcp_query_nl_to_sql(query, access_token=access_token)
                 
                 # Check if MCP actually found something useful
-                # If it returns "No se encontraron resultados", we should fall back to RAG agents
-                if mcp_response and "No se encontraron resultados" not in mcp_response:
+                # mcp_query_nl_to_sql now returns None if no results found
+                if mcp_response:
                     response = mcp_response
                 else:
-                    logger.info("MCP returned no results, falling back to RAG agents")
+                    logger.info("MCP returned None (no results), falling back to RAG agents")
             except MCPClientError as e:
                 logger.warning(f"MCP error: {e}; falling back to agents")
                 if mcp_only:
