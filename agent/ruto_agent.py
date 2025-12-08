@@ -379,40 +379,25 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
 
         hooks = PreToolMessageHook()
 
-        # Try MCP first if configured; optionally enforce MCP-only mode
-        response = ""
-        mcp_only = os.environ.get("MCP_ONLY", "false").lower() in ("1", "true", "yes")
-        mcp_url = os.environ.get("MCP_SERVER_URL")
-        if mcp_url:
-            try:
-                access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-                response = await mcp_query_nl_to_sql(query, access_token=access_token)
-            except MCPClientError as e:
-                logger.warning(f"MCP error: {e}; falling back to agents")
-                if mcp_only:
-                    return "Lo siento, el modo MCP-only está activado y hubo un error consultando MCP. Intenta de nuevo más tarde."
-        elif mcp_only:
-            return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
-
-        if not response and not mcp_only:
-            if chatbot_status == "on":
-                result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
-                for new_item in result.new_items:
-                    if isinstance(new_item, MessageOutputItem):
-                        response += ItemHelpers.text_message_output(new_item) + "\n"
-                conversation_history[conversation_id] = {
-                    "input_items": result.to_input_list(),
-                    "current_agent": result.last_agent,
-                    "is_first_interaction": False,
-                }
-            else:
-                result = await Runner.run(router_agent, input_items, context=context)
-                response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
-                conversation_history[conversation_id] = {
-                    "input_items": result.to_input_list(),
-                    "current_agent": router_agent,
-                    "is_first_interaction": False,
-                }
+        # Run the agents (which use RAG tools that execute via MCP)
+        if chatbot_status == "on":
+            result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
+            for new_item in result.new_items:
+                if isinstance(new_item, MessageOutputItem):
+                    response += ItemHelpers.text_message_output(new_item) + "\n"
+            conversation_history[conversation_id] = {
+                "input_items": result.to_input_list(),
+                "current_agent": result.last_agent,
+                "is_first_interaction": False,
+            }
+        else:
+            result = await Runner.run(router_agent, input_items, context=context)
+            response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
+            conversation_history[conversation_id] = {
+                "input_items": result.to_input_list(),
+                "current_agent": router_agent,
+                "is_first_interaction": False,
+            }
 
         formatted_response = SlackMessageFormatter.format_response(response.strip(), context)
         logger.info(f"Generated response for {conversation_id}")
