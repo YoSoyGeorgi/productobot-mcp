@@ -8,6 +8,7 @@ from tools.RAG import process_user_query
 from tools.RAG_lodging import process_user_lodging_query
 from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError, mcp_execute_sql_raw
 from typing import Optional, Dict, Any, Callable
+from functools import partial
 import logging
 
 # Set up logging
@@ -87,10 +88,13 @@ async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], lo
     logger.info(f"get_experiences called with query: {location_and_activity_preferences}")
     try:
         logger.info("Calling process_user_query for experiences")
+        access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+        executor = partial(mcp_execute_sql_raw, access_token=access_token)
+        
         formatted_results, search_results, match_type = process_user_query(
             location_and_activity_preferences, 
             "experiences",
-            executor=mcp_execute_sql_raw
+            executor=executor
         )
         logger.info(f"Search results count: {len(search_results) if search_results else 0}")
         
@@ -112,9 +116,12 @@ async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], locati
     Returns:
         The lodging recommendations from the knowledge base.
     """
+    access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+    executor = partial(mcp_execute_sql_raw, access_token=access_token)
+    
     formatted_results, search_results, match_type = process_user_lodging_query(
         location_and_preferences,
-        executor=mcp_execute_sql_raw
+        executor=executor
     )
 
     # Store the processed query in context for tracking
@@ -132,10 +139,13 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     Returns:
         The transportation options from the knowledge base.
     """
+    access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+    executor = partial(mcp_execute_sql_raw, access_token=access_token)
+    
     formatted_results, search_results, match_type = process_user_query(
         route_and_preferences, 
         "transport",
-        executor=mcp_execute_sql_raw
+        executor=executor
     )
 
     # Store the processed query in context for tracking
