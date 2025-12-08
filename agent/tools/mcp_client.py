@@ -90,6 +90,82 @@ Presenta esta información de forma natural y útil para el usuario."""
     
     return response.choices[0].message.content.strip()
 
+async def mcp_execute_sql_raw(sql_query: str, access_token: Optional[str] = None) -> list:
+    """Execute a SQL query using the MCP server and return raw list of results."""
+    if not MCP_URL:
+        raise MCPClientError("MCP_SERVER_URL not configured")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2025-06-18",
+    }
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Initialize session
+        init_payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {"elicitation": {}},
+                "clientInfo": {
+                    "name": "productobot-slack",
+                    "title": "ProductoBot Slack MCP Client",
+                    "version": "0.1.0",
+                },
+            },
+        }
+        init_resp = await client.post(MCP_URL, headers=headers, content=json.dumps(init_payload))
+        if init_resp.status_code >= 300:
+            raise MCPClientError(f"MCP initialize failed: {init_resp.status_code} {init_resp.text}")
+        
+        # Extract session ID from response headers
+        session_id = init_resp.headers.get("Mcp-Session-Id")
+        if session_id:
+            headers["Mcp-Session-Id"] = session_id
+
+        # Call execute_sql
+        call_tool_payload = {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "execute_sql",
+                "arguments": {
+                    "query": sql_query
+                }
+            }
+        }
+        tool_resp = await client.post(MCP_URL, headers=headers, content=json.dumps(call_tool_payload))
+        if tool_resp.status_code >= 300:
+            raise MCPClientError(f"MCP tools/call failed: {tool_resp.status_code} {tool_resp.text}")
+        
+        data = tool_resp.json()
+        result = data.get("result") or {}
+        content = result.get("content") or []
+        
+        raw_text = ""
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text" and part.get("text"):
+                raw_text += part["text"]
+        
+        # Try to parse the raw text as JSON
+        try:
+            # The MCP tool might return a JSON string, or just text.
+            # If it's a list of dicts, it should be parseable.
+            # Sometimes it might be wrapped in markdown blocks.
+            cleaned_text = raw_text.replace("```json", "").replace("```", "").strip()
+            if not cleaned_text:
+                return []
+            return json.loads(cleaned_text)
+        except json.JSONDecodeError:
+            logger.warning(f"Could not parse SQL result as JSON: {raw_text[:100]}...")
+            return []
+
 async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None) -> str:
     """
     Sends a minimal MCP JSON-RPC initialize followed by a basic completion request

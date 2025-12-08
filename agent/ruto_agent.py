@@ -6,7 +6,7 @@ from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
 from tools.RAG import process_user_query
 from tools.RAG_lodging import process_user_lodging_query
-from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError
+from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError, mcp_execute_sql_raw
 from typing import Optional, Dict, Any, Callable
 import logging
 
@@ -87,7 +87,11 @@ async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], lo
     logger.info(f"get_experiences called with query: {location_and_activity_preferences}")
     try:
         logger.info("Calling process_user_query for experiences")
-        formatted_results, search_results, match_type = process_user_query(location_and_activity_preferences, "experiences")
+        formatted_results, search_results, match_type = process_user_query(
+            location_and_activity_preferences, 
+            "experiences",
+            executor=mcp_execute_sql_raw
+        )
         logger.info(f"Search results count: {len(search_results) if search_results else 0}")
         
         # Store the processed query in context for tracking
@@ -108,7 +112,10 @@ async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], locati
     Returns:
         The lodging recommendations from the knowledge base.
     """
-    formatted_results, search_results, match_type = process_user_lodging_query(location_and_preferences)
+    formatted_results, search_results, match_type = process_user_lodging_query(
+        location_and_preferences,
+        executor=mcp_execute_sql_raw
+    )
 
     # Store the processed query in context for tracking
     contextWrapper.context.user_query = location_and_preferences
@@ -125,7 +132,11 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     Returns:
         The transportation options from the knowledge base.
     """
-    formatted_results, search_results, match_type = process_user_query(route_and_preferences, "transport")
+    formatted_results, search_results, match_type = process_user_query(
+        route_and_preferences, 
+        "transport",
+        executor=mcp_execute_sql_raw
+    )
 
     # Store the processed query in context for tracking
     contextWrapper.context.user_query = route_and_preferences
