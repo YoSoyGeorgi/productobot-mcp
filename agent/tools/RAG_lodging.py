@@ -4,6 +4,7 @@ import nest_asyncio
 import requests
 import numpy as np
 import pandas as pd
+import asyncio
 from typing import Union, List, Optional, Tuple, Dict, Any, Literal, Callable
 from dotenv import load_dotenv
 from supabase import create_client, Client

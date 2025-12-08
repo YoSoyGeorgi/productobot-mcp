@@ -4,6 +4,7 @@ import nest_asyncio
 import requests
 import numpy as np
 import pandas as pd
+import asyncio
 from typing import Union, List, Optional, Tuple, Dict, Any, Literal, Callable
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -302,7 +303,6 @@ def process_user_query(user_query: str, table: str, executor: Optional[Callable[
         try:
             data = executor(sql_query)
             if asyncio.iscoroutine(data):
-                import asyncio
                 loop = asyncio.get_event_loop()
                 data = loop.run_until_complete(data)
             response = MockResponse(data)
@@ -332,7 +332,6 @@ def process_user_query(user_query: str, table: str, executor: Optional[Callable[
             if executor:
                 data = executor(sql_query)
                 if asyncio.iscoroutine(data):
-                    import asyncio
                     loop = asyncio.get_event_loop()
                     data = loop.run_until_complete(data)
                 response = MockResponse(data)
