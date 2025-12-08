@@ -171,11 +171,23 @@ if app:
         # Get thread timestamp - use message ts as thread ts if it's the start of a thread
         thread_ts = event.get('thread_ts', event['ts'])
         
+        # Clean up message text by removing bot mention
+        message_text = event.get('text', "")
+        # We need to get the bot user ID to remove the mention
+        try:
+            auth_test = client.auth_test()
+            bot_user_id = auth_test["user_id"]
+            bot_mention = f"<@{bot_user_id}>"
+            if bot_mention in message_text:
+                message_text = message_text.replace(bot_mention, "").strip()
+        except Exception as e:
+            logging.warning(f"Could not remove bot mention from text: {e}")
+
         try:
             # Pass channel and thread info to maintain conversation context
             response = sync_chat(
                 chatbot_status="on",
-                query=event['text'],
+                query=message_text,
                 channel_id=event['channel'],
                 thread_ts=thread_ts,
                 first_name=user_info.get("real_name") or user_info.get("display_name") or user_info.get("name", "Usuario")
@@ -254,10 +266,6 @@ if app:
         bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
         is_bot_mentioned = bot_mention and bot_mention in message_text
         
-        # If the bot is mentioned, let the app_mention handler take care of it to avoid duplicate responses
-        if is_bot_mentioned:
-            return
-        
         # Track threads where the bot has been tagged to respond without tagging again
         # Create a unique thread identifier
         thread_id = f"{event['channel']}_{thread_ts}" if is_in_thread and thread_ts else None
@@ -279,7 +287,9 @@ if app:
                 
                 # If bot is explicitly mentioned, we should process regardless of other mentions
                 if is_bot_mentioned:
-                    should_process = True
+                    # If bot is mentioned, handle_app_mention will take care of it
+                    # So we should NOT process it here to avoid duplicate responses
+                    return
                 else:
                     should_process = not mentions_other_user
             else:
@@ -292,11 +302,20 @@ if app:
                     should_process = False
         # For messages in channels (not in thread), only process if bot is mentioned
         elif not is_in_thread and not should_process:
-            should_process = is_bot_mentioned
+            # If bot is mentioned in a channel, handle_app_mention will take care of it
+            # So we should NOT process it here to avoid duplicate responses
+            if is_bot_mentioned:
+                return
+            should_process = False
         
         # If we shouldn't process this message, return
         if not should_process:
             return
+
+        # Clean up message text by removing bot mention
+        if bot_mention:
+            message_text = message_text.replace(bot_mention, "").strip()
+            event['text'] = message_text # Update event text for downstream use
 
         # Get user info
         user_id = event.get("user")
