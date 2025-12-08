@@ -398,12 +398,20 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                 max_turns = 5
                 turns = 0
                 while turns < max_turns:
+                    logger.info(f"Running agent loop turn {turns+1} with agent {current_agent.name}")
                     result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
                     
+                    # Debug: Log what we got back
+                    logger.info(f"Runner returned {len(result.new_items)} new items")
+                    for i, item in enumerate(result.new_items):
+                        logger.info(f"Item {i}: type={type(item)}, content={item}")
+
                     # Collect text responses
                     for new_item in result.new_items:
                         if isinstance(new_item, MessageOutputItem):
-                            response += ItemHelpers.text_message_output(new_item) + "\n"
+                            text_content = ItemHelpers.text_message_output(new_item)
+                            if text_content:
+                                response += text_content + "\n"
                     
                     # Update history
                     conversation_history[conversation_id] = {
@@ -413,7 +421,7 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                     }
                     
                     # Check for handoff
-                    if result.last_agent != current_agent:
+                    if result.last_agent.name != current_agent.name:
                         logger.info(f"Handoff detected from {current_agent.name} to {result.last_agent.name}")
                         current_agent = result.last_agent
                         # Update input items for the next run in the loop
@@ -421,6 +429,7 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                         turns += 1
                     else:
                         # No handoff, we are done for this turn
+                        logger.info(f"No handoff detected (agent remains {current_agent.name}), breaking loop")
                         break
                 
                 # Fallback if response is still empty
