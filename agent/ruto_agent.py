@@ -6,9 +6,8 @@ from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
 from tools.RAG import process_user_query
 from tools.RAG_lodging import process_user_lodging_query
-from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError, mcp_execute_sql_raw
+from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError
 from typing import Optional, Dict, Any, Callable
-from functools import partial
 import logging
 
 # Set up logging
@@ -88,14 +87,7 @@ async def get_experiences(contextWrapper: RunContextWrapper[UserInfoContext], lo
     logger.info(f"get_experiences called with query: {location_and_activity_preferences}")
     try:
         logger.info("Calling process_user_query for experiences")
-        access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-        executor = partial(mcp_execute_sql_raw, access_token=access_token)
-        
-        formatted_results, search_results, match_type = process_user_query(
-            location_and_activity_preferences, 
-            "experiences",
-            executor=executor
-        )
+        formatted_results, search_results, match_type = process_user_query(location_and_activity_preferences, "experiences")
         logger.info(f"Search results count: {len(search_results) if search_results else 0}")
         
         # Store the processed query in context for tracking
@@ -116,13 +108,7 @@ async def get_lodging(contextWrapper: RunContextWrapper[UserInfoContext], locati
     Returns:
         The lodging recommendations from the knowledge base.
     """
-    access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-    executor = partial(mcp_execute_sql_raw, access_token=access_token)
-    
-    formatted_results, search_results, match_type = process_user_lodging_query(
-        location_and_preferences,
-        executor=executor
-    )
+    formatted_results, search_results, match_type = process_user_lodging_query(location_and_preferences)
 
     # Store the processed query in context for tracking
     contextWrapper.context.user_query = location_and_preferences
@@ -139,14 +125,7 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     Returns:
         The transportation options from the knowledge base.
     """
-    access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-    executor = partial(mcp_execute_sql_raw, access_token=access_token)
-    
-    formatted_results, search_results, match_type = process_user_query(
-        route_and_preferences, 
-        "transport",
-        executor=executor
-    )
+    formatted_results, search_results, match_type = process_user_query(route_and_preferences, "transport")
 
     # Store the processed query in context for tracking
     contextWrapper.context.user_query = route_and_preferences
@@ -389,26 +368,43 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
 
         hooks = PreToolMessageHook()
 
+        # Try MCP first if configured; optionally enforce MCP-only mode
+        # response = ""
+        # mcp_only = os.environ.get("MCP_ONLY", "false").lower() in ("1", "true", "yes")
+        # mcp_url = os.environ.get("MCP_SERVER_URL")
+        # if mcp_url:
+        #     try:
+        #         access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+        #         response = await mcp_query_nl_to_sql(query, access_token=access_token)
+        #     except MCPClientError as e:
+        #         logger.warning(f"MCP error: {e}; falling back to agents")
+        #         if mcp_only:
+        #             return "Lo siento, el modo MCP-only está activado y hubo un error consultando MCP. Intenta de nuevo más tarde."
+        # elif mcp_only:
+        #     return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
+        
         response = ""
-        # Run the agents (which use RAG tools that execute via MCP)
-        if chatbot_status == "on":
-            result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
-            for new_item in result.new_items:
-                if isinstance(new_item, MessageOutputItem):
-                    response += ItemHelpers.text_message_output(new_item) + "\n"
-            conversation_history[conversation_id] = {
-                "input_items": result.to_input_list(),
-                "current_agent": result.last_agent,
-                "is_first_interaction": False,
-            }
-        else:
-            result = await Runner.run(router_agent, input_items, context=context)
-            response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
-            conversation_history[conversation_id] = {
-                "input_items": result.to_input_list(),
-                "current_agent": router_agent,
-                "is_first_interaction": False,
-            }
+        mcp_only = False
+
+        if not response and not mcp_only:
+            if chatbot_status == "on":
+                result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
+                for new_item in result.new_items:
+                    if isinstance(new_item, MessageOutputItem):
+                        response += ItemHelpers.text_message_output(new_item) + "\n"
+                conversation_history[conversation_id] = {
+                    "input_items": result.to_input_list(),
+                    "current_agent": result.last_agent,
+                    "is_first_interaction": False,
+                }
+            else:
+                result = await Runner.run(router_agent, input_items, context=context)
+                response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
+                conversation_history[conversation_id] = {
+                    "input_items": result.to_input_list(),
+                    "current_agent": router_agent,
+                    "is_first_interaction": False,
+                }
 
         formatted_response = SlackMessageFormatter.format_response(response.strip(), context)
         logger.info(f"Generated response for {conversation_id}")

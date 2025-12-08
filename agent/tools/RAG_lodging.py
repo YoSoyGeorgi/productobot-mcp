@@ -4,8 +4,7 @@ import nest_asyncio
 import requests
 import numpy as np
 import pandas as pd
-import asyncio
-from typing import Union, List, Optional, Tuple, Dict, Any, Literal, Callable
+from typing import Union, List, Optional, Tuple, Dict, Any, Literal
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from agents import Agent, Runner, ModelSettings
@@ -77,13 +76,12 @@ def get_embeddings(texts: Union[str, List[str]]) -> List[List[float]]:
         print("Error fetching embeddings:", e)
         return [None for _ in texts]
 
-def process_user_lodging_query(user_query: str, executor: Optional[Callable[[str], Any]] = None) -> Tuple[str, List[Dict[str, Any]], str]:
+def process_user_lodging_query(user_query: str) -> Tuple[str, List[Dict[str, Any]], str]:
     """
     Process a user query for a specified table (experiences, lodging, or transport), transform it into a structured narrative, and search for similar entries.
     
     Args:
         user_query: The user's search query text
-        executor: Optional function to execute SQL query. If None, uses direct Supabase client.
         
     Returns:
         A tuple containing (formatted_results, supabase_response, formatted_results_for_ai)
@@ -257,10 +255,6 @@ def process_user_lodging_query(user_query: str, executor: Optional[Callable[[str
     def get_best_results(embedding_literal: str, structured_narrative: NarrativeQuery, supabase_client: Client) -> Tuple[Any, str]:
         """Try different filter combinations with progressive fallback"""
         
-        class MockResponse:
-            def __init__(self, data):
-                self.data = data
-
         # Extract available filters from structured narrative
         available_filters = {
             'state_name': state_name,
@@ -295,16 +289,7 @@ def process_user_lodging_query(user_query: str, executor: Optional[Callable[[str
                 continue
                 
             sql_query = build_dynamic_query(embedding_literal, filters)
-            
-            if executor:
-                data = executor(sql_query)
-                # Handle async executor if needed
-                if asyncio.iscoroutine(data):
-                    loop = asyncio.get_event_loop()
-                    data = loop.run_until_complete(data)
-                response = MockResponse(data)
-            else:
-                response = supabase_client.rpc("run_sql", {"query": sql_query}).execute()
+            response = supabase_client.rpc("run_sql", {"query": sql_query}).execute()
             
             # Determine match type based on filters used
             if not filters:
@@ -329,15 +314,7 @@ def process_user_lodging_query(user_query: str, executor: Optional[Callable[[str
                 return response, match_type
         
         # Fallback: return empty response
-        sql_query = build_dynamic_query(embedding_literal)
-        if executor:
-            data = executor(sql_query)
-            if asyncio.iscoroutine(data):
-                loop = asyncio.get_event_loop()
-                data = loop.run_until_complete(data)
-            return MockResponse(data), "fallback"
-        else:
-            return supabase_client.rpc("run_sql", {"query": sql_query}).execute(), "fallback"
+        return supabase_client.rpc("run_sql", {"query": build_dynamic_query(embedding_literal)}).execute(), "fallback"
     
     # Get the best results using the dynamic approach
     response, match_type = get_best_results(embedding_literal, structured_narrative, supabase)
