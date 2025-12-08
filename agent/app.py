@@ -254,6 +254,10 @@ if app:
         bot_mention = f"<@{BOT_USER_ID}>" if BOT_USER_ID else None
         is_bot_mentioned = bot_mention and bot_mention in message_text
         
+        # If the bot is mentioned, let the app_mention handler take care of it to avoid duplicate responses
+        if is_bot_mentioned:
+            return
+        
         # Track threads where the bot has been tagged to respond without tagging again
         # Create a unique thread identifier
         thread_id = f"{event['channel']}_{thread_ts}" if is_in_thread and thread_ts else None
