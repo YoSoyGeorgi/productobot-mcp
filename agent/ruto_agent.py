@@ -369,22 +369,28 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
         hooks = PreToolMessageHook()
 
         # Try MCP first if configured; optionally enforce MCP-only mode
-        # response = ""
-        # mcp_only = os.environ.get("MCP_ONLY", "false").lower() in ("1", "true", "yes")
-        # mcp_url = os.environ.get("MCP_SERVER_URL")
-        # if mcp_url:
-        #     try:
-        #         access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-        #         response = await mcp_query_nl_to_sql(query, access_token=access_token)
-        #     except MCPClientError as e:
-        #         logger.warning(f"MCP error: {e}; falling back to agents")
-        #         if mcp_only:
-        #             return "Lo siento, el modo MCP-only está activado y hubo un error consultando MCP. Intenta de nuevo más tarde."
-        # elif mcp_only:
-        #     return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
-        
         response = ""
-        mcp_only = False
+        mcp_only = os.environ.get("MCP_ONLY", "false").lower() in ("1", "true", "yes")
+        mcp_url = os.environ.get("MCP_SERVER_URL")
+        
+        # Attempt MCP query first
+        if mcp_url:
+            try:
+                access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+                mcp_response = await mcp_query_nl_to_sql(query, access_token=access_token)
+                
+                # Check if MCP actually found something useful
+                # If it returns "No se encontraron resultados", we should fall back to RAG agents
+                if mcp_response and "No se encontraron resultados" not in mcp_response:
+                    response = mcp_response
+                else:
+                    logger.info("MCP returned no results, falling back to RAG agents")
+            except MCPClientError as e:
+                logger.warning(f"MCP error: {e}; falling back to agents")
+                if mcp_only:
+                    return "Lo siento, el modo MCP-only está activado y hubo un error consultando MCP. Intenta de nuevo más tarde."
+        elif mcp_only:
+            return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
 
         if not response and not mcp_only:
             if chatbot_status == "on":
