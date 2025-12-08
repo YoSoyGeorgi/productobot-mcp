@@ -410,12 +410,17 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                     for i, item in enumerate(result.new_items):
                         logger.info(f"Item {i}: type={type(item)}, content={item}")
 
-                    # Collect text responses
+                    # Collect text responses and check if the last agent spoke
+                    last_agent_spoke = False
                     for new_item in result.new_items:
                         if isinstance(new_item, MessageOutputItem):
                             text_content = ItemHelpers.text_message_output(new_item)
                             if text_content:
                                 response += text_content + "\n"
+                            
+                            # Check if this message came from the agent that ended the run
+                            if hasattr(new_item, 'agent') and new_item.agent.name == result.last_agent.name:
+                                last_agent_spoke = True
                     
                     # Update history
                     conversation_history[conversation_id] = {
@@ -427,6 +432,12 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                     # Check for handoff
                     if result.last_agent.name != current_agent.name:
                         logger.info(f"Handoff detected from {current_agent.name} to {result.last_agent.name}")
+                        
+                        # If the new agent already produced a message, we don't need to loop again
+                        if last_agent_spoke:
+                            logger.info(f"Agent {result.last_agent.name} already spoke in this turn. Breaking loop.")
+                            break
+                            
                         current_agent = result.last_agent
                         # Update input items for the next run in the loop
                         input_items = conversation_history[conversation_id]["input_items"]
