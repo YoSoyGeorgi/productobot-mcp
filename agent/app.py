@@ -316,6 +316,12 @@ if app:
         if bot_mention:
             message_text = message_text.replace(bot_mention, "").strip()
             event['text'] = message_text # Update event text for downstream use
+        
+        # Double check: if the message still contains the bot mention (e.g. raw text),
+        # and we are in a channel/thread where app_mention also fires, we might still duplicate.
+        # The safest way is: if is_bot_mentioned is True, ALWAYS return and let handle_app_mention handle it.
+        if is_bot_mentioned:
+            return
 
         # Get user info
         user_id = event.get("user")
