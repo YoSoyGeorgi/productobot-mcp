@@ -392,6 +392,8 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
         elif mcp_only:
             return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
 
+        logger.info(f"Debug: response='{response}', mcp_only={mcp_only}, chatbot_status='{chatbot_status}'")
+
         if not response and not mcp_only:
             if chatbot_status == "on":
                 # Loop to handle handoffs within the same turn
