@@ -379,6 +379,7 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
 
         hooks = PreToolMessageHook()
 
+        response = ""
         # Run the agents (which use RAG tools that execute via MCP)
         if chatbot_status == "on":
             result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)

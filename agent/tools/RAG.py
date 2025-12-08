@@ -462,6 +462,36 @@ IMPORTANT: If a piece of information is not present in the user query leave the 
         # Filter out non-numeric values
         refined_embedding = [float(x) for x in refined_embedding if isinstance(x, (int, float))]
 
+    # Convert the refined embedding into a vector literal string
+    embedding_literal = "[" + ",".join(str(x) for x in refined_embedding) + "]"
+    
+    # Define a threshold for vector similarity relevance
+    SIMILARITY_THRESHOLD = 0.45  # Adjust this value based on your needs
+    match_type = None
+    
+    # Only run state-specific query if state_name is not None
+    if state_name:
+        # First, try to find experiences that match the state name
+        sql_query = f"""
+        SELECT id::text, narrative_text, city, full_json, vector_embedding <=> '{embedding_literal}'::vector AS distance
+        FROM {table}
+        WHERE LOWER(destination_name) LIKE LOWER('%{state_name}%')
+        ORDER BY vector_embedding <=> '{embedding_literal}'::vector
+        LIMIT 10;
+        """
+        match_type = "state"
+    else:
+        # If no state_name, run without state filter
+        sql_query = f"""
+        SELECT id::text, narrative_text, city, full_json, vector_embedding <=> '{embedding_literal}'::vector AS distance
+        FROM {table}
+        ORDER BY vector_embedding <=> '{embedding_literal}'::vector
+        LIMIT 10;
+        """
+        match_type = "no_state"
+        
+    return sql_query, match_type, embedding_literal
+
 # Example usage:
 # user_query = "I'm looking for a hiking experience in Oaxaca"
 # structured_narrative, search_results, formatted_results = process_user_query(user_query, "experiences")
