@@ -385,6 +385,8 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
                     response = mcp_response
                 else:
                     logger.info("MCP returned None (no results), falling back to RAG agents")
+                    # Force fallback even if MCP_ONLY is set
+                    mcp_only = False
             except MCPClientError as e:
                 logger.warning(f"MCP error: {e}; falling back to agents")
                 if mcp_only:
