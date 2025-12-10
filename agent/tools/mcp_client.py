@@ -29,10 +29,14 @@ La base de datos tiene tablas para experiencias turísticas, alojamientos y tran
 REGLAS IMPORTANTES:
 1. NUNCA incluyas columnas de vectores/embeddings en el SELECT (vector_embedding, embeddings, embedding, full_json, etc.)
 2. Primero revisa el esquema para saber qué columnas existen en cada tabla.
-3. Para la tabla 'experiences', usa: SELECT id, narrative_text, service_type, city, supplier_name, destination_name, duration FROM experiences
+3. Para la tabla 'experiences', SIEMPRE intenta obtener el precio haciendo un LEFT JOIN con 'tariff_person_group' usando 'supplier_name'.
+   Ejemplo: SELECT e.id, e.narrative_text, e.service_type, e.city, e.supplier_name, e.destination_name, e.duration, t.sellfits as price 
+   FROM experiences e 
+   LEFT JOIN tariff_person_group t ON e.supplier_name = t.supplier_name
 4. IMPORTANTE: Las tablas 'lodging', 'experiences' y 'transport' NO tienen columna 'is_deleted'. NO la incluyas en el WHERE.
 5. Usa ILIKE con '%término%' para búsquedas de texto.
 6. Para nombres de lugares compuestos (ej. "Xpu Ha"), reemplaza los espacios con '%' en la búsqueda (ej. '%Xpu%Ha%') para encontrar variaciones con guiones o espacios.
+7. Si la consulta es sobre alojamientos o transporte, aplica la misma lógica de precios si es posible, o busca en sus tablas respectivas.
 
 Responde SOLO con la consulta SQL, sin explicaciones ni formato markdown."""
 
