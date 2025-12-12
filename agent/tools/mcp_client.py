@@ -191,6 +191,11 @@ async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None) -
         if text_parts:
             raw_response = "\n".join(text_parts)
             
+            # Check for error responses from Supabase/Postgres
+            if '{"error":' in raw_response or "Failed to run sql query" in raw_response:
+                logger.warning(f"MCP returned an SQL execution error: {raw_response[:200]}")
+                return None
+            
             # Check if response indicates no results
             # Supabase MCP often returns "[]" inside untrusted-data tags or just "[]"
             if "[]" in raw_response or "no data" in raw_response.lower():
