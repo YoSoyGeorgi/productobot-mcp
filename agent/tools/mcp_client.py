@@ -16,7 +16,7 @@ MCP_URL = os.environ.get("MCP_SERVER_URL")
 class MCPClientError(Exception):
     pass
 
-async def translate_nl_to_sql(prompt: str, schema_info: str = "") -> str:
+async def translate_nl_to_sql(prompt: str, schema_info: str = "", history: list = None) -> str:
     """Use OpenAI to translate natural language to SQL"""
     client = openai.AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
@@ -40,12 +40,23 @@ REGLAS IMPORTANTES:
 
 Responde SOLO con la consulta SQL, sin explicaciones ni formato markdown."""
 
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # Add conversation history if available to maintain context
+    if history:
+        # Filter and format history messages
+        # We only want user and assistant text messages
+        for msg in history:
+            if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                # Limit content length to avoid token limits
+                content = str(msg["content"])[:500]
+                messages.append({"role": msg["role"], "content": content})
+
+    messages.append({"role": "user", "content": prompt})
+
     response = await client.chat.completions.create(
         model="gpt-4.1-mini-2025-04-14",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
+        messages=messages,
         temperature=0
     )
     
@@ -94,7 +105,7 @@ Presenta esta información de forma natural y útil para el usuario."""
     
     return response.choices[0].message.content.strip()
 
-async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None) -> str:
+async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None, history: list = None) -> str:
     """
     Sends a minimal MCP JSON-RPC initialize followed by a basic completion request
     to an HTTP MCP server. Returns the textual response if available.
@@ -158,7 +169,7 @@ async def mcp_query_nl_to_sql(prompt: str, access_token: Optional[str] = None) -
 
         # Translate natural language to SQL using OpenAI
         logger.info(f"Translating query: {prompt}")
-        sql_query = await translate_nl_to_sql(prompt, schema_info)
+        sql_query = await translate_nl_to_sql(prompt, schema_info, history)
         logger.info(f"Generated SQL: {sql_query}")
 
         # Call execute_sql with the generated SQL

@@ -344,6 +344,19 @@ class SlackMessageFormatter:
             return "Hola 👋, soy ProductoBot 🤖, estoy en desarrollo pero me puedes preguntar sobre viajes, destinos, alojamientos o experiencias" + response
         return response
 
+def extract_history_for_mcp(input_items):
+    """Extract conversation history in a format suitable for MCP context."""
+    history = []
+    # Skip the last item as it is the current query which is passed separately
+    for item in input_items[:-1]:
+        if isinstance(item, dict):
+            history.append(item)
+        elif isinstance(item, MessageOutputItem):
+            content = ItemHelpers.text_message_output(item)
+            if content:
+                history.append({"role": "assistant", "content": content})
+    return history
+
 async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on", first_name="Usuario"):
     """
     Process a user message and return a response.
@@ -377,7 +390,9 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
         if mcp_url:
             try:
                 access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-                mcp_response = await mcp_query_nl_to_sql(query, access_token=access_token)
+                # Extract history to provide context for follow-up questions
+                history = extract_history_for_mcp(input_items)
+                mcp_response = await mcp_query_nl_to_sql(query, access_token=access_token, history=history)
                 
                 # Check if MCP actually found something useful
                 # mcp_query_nl_to_sql now returns None if no results found

@@ -14,7 +14,7 @@ async def main():
     print("MCP_SERVER_URL:", os.environ.get("MCP_SERVER_URL"))
     print("SUPABASE_ACCESS_TOKEN set:", bool(os.environ.get("SUPABASE_ACCESS_TOKEN")))
 
-    prompt = "Transfer en el destino de Queretaro Area"
+    prompt = "Actividades en yucatan"
     print("\nTesting raw MCP call...")
     try:
         text = await mcp_query_nl_to_sql(prompt, access_token=os.environ.get("SUPABASE_ACCESS_TOKEN"))
