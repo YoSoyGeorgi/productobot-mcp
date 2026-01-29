@@ -1,13 +1,13 @@
 import asyncio
 import os
-from agents import Agent, GuardrailFunctionOutput, HandoffOutputItem, ItemHelpers, MessageOutputItem, RunContextWrapper, Runner, TResponseInputItem, ToolCallItem, ToolCallOutputItem, WebSearchTool, function_tool, input_guardrail, RunHooks
-from agents.exceptions import InputGuardrailTripwireTriggered
+from agents import Agent, ItemHelpers, MessageOutputItem, RunContextWrapper, Runner, TResponseInputItem, ToolCallItem, ToolCallOutputItem, WebSearchTool, function_tool, RunHooks, ModelSettings
 from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
 from pydantic import BaseModel
 from tools.RAG import process_user_query
 from tools.RAG_lodging import process_user_lodging_query
 from tools.mcp_client import mcp_query_nl_to_sql, MCPClientError
 from typing import Optional, Dict, Any, Callable
+from parallel_agents import ParallelAgentRunner, HybridAgentOrchestrator
 import logging
 
 # Set up logging
@@ -30,10 +30,6 @@ class UserInfoContext(BaseModel):
 # Dictionary to store conversation history by channel_thread_id
 conversation_history = {}
 
-class TripPlanningGuardrailOutput(BaseModel):
-    is_trip_planning: bool
-    reasoning: str
-
 # Export conversation_history to be used by app.py
 __all__ = ["chat", "conversation_history"]
 
@@ -51,17 +47,6 @@ IMPORTANT: When formatting your responses for Slack, use the following Slack-spe
 
 Always use this Slack-specific markdown formatting in your responses.
 """
-
-@input_guardrail
-async def trip_planning_guardrail( 
-    ctx: RunContextWrapper[UserInfoContext], agent: Agent, input: str | list[TResponseInputItem]
-) -> GuardrailFunctionOutput:
-    result = await Runner.run(guardrail_agent, input, context=ctx.context)
-
-    return GuardrailFunctionOutput(
-        output_info=result.final_output, 
-        tripwire_triggered=not result.final_output.is_trip_planning,
-    )
 
 @function_tool
 async def get_city_weather(contextWrapper: RunContextWrapper[UserInfoContext], city: str) -> str:
@@ -134,197 +119,196 @@ async def get_transportation(contextWrapper: RunContextWrapper[UserInfoContext],
     else:
         return f"No encontré transporte en la ubicación exacta pero te dejo algunas opciones cercanas: {formatted_results}"
 
+@function_tool
+async def query_database_mcp(contextWrapper: RunContextWrapper[UserInfoContext], query: str) -> str:
+    """Query the database using natural language via MCP. Use this for specific data lookups, 
+    availability, pricing, or complex queries that require SQL.
+    Args:
+        query: The natural language query to run against the database.
+    Returns:
+        The results from the database or an error message.
+    """
+    logger.info(f"query_database_mcp called with query: {query}")
+    mcp_url = os.environ.get("MCP_SERVER_URL")
+    if not mcp_url:
+        return "MCP server is not configured."
+    
+    try:
+        access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
+        # We don't have easy access to history here in the tool, but we can pass the current query
+        # The agent will handle the conversation context
+        mcp_response = await mcp_query_nl_to_sql(query, access_token=access_token)
+        if mcp_response:
+            return mcp_response
+        else:
+            return "No se encontraron resultados en la base de datos para esa consulta."
+    except Exception as e:
+        logger.error(f"Error in query_database_mcp: {str(e)}")
+        return f"Error consultando la base de datos: {str(e)}"
 
-guardrail_agent = Agent( 
-    name="Guardrail check",
-    instructions="Check if the user is asking you a request that is related to trip planning, experiences, lodging, or transportation in the context of a travel agency.",
-    output_type=TripPlanningGuardrailOutput,
-)
 
-city_info_agent = Agent[UserInfoContext](
-    name="City Info Agent",
-    handoff_description="A helpful agent that can answer questions about a city not related to experiences, hotels, or transportation.",
-    instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
-    {SLACK_FORMATTING}
-    You are a city info agent. If you are speaking to a customer, you probably were transferred to from the triage agent.
-    Use the following routine to support the customer.
-    # Routine
-    1. Ask for the city name if not clear from the context.
-    2. Use the web search tool to get information about restaurants in the city.
-    3. Use the weather tool to get the live weather in the city, use your knowledge for climate questions.
-    4. If the customer asks a question that is not related to the routine, transfer back to the triage agent. """,
-    model="gpt-4.1-mini-2025-04-14",
-    tools=[WebSearchTool(), get_city_weather]
-)
+# ===== SPECIALIZED PARALLEL AGENTS =====
+# These agents focus on specific domains and run in parallel when beneficial
 
 experiences_agent = Agent[UserInfoContext](
-    name="Experiences Agent",
-    handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about experiences from the knowledge base.",
+    name="ExperiencesAgent",
     instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
-    You are an experiences agent. If you are speaking to an employee of Rutopía travel agency, you probably were transferred from the triage agent. User can pass you provider name only, use the tool to get the experience.
+    You are an expert in travel experiences and activities. 
+    Extract all activity, tour, and experience-related requests from the user query.
+    Use the get_experiences tool to find relevant activities, tours, and experiences.
     
-    # Response Guidelines
-    - Provide BRIEF, FOCUSED responses based on specific user requirements
-    - Show ONLY the information requested by the user
-    - If no specific info is requested, use the standardized format below
-    - ALWAYS order results by price when "barato", "económico", or price-focused terms are mentioned
-    - Show ONLY providers with rating A or B, always indicate provider type
-    - HIDE contact data unless specifically requested
-    - Include age range, private/shared status, and product code
-    - Show banking data ONLY if specifically requested
-
-    # Routine
-    1. Ask for experience type/location if user's query is unclear, or use tool directly if clear
-    2. Use get_experiences tool and format response according to user's specific request
-    3. If not exact match, offer alternatives explaining why (similar activity, close location, price range)
-
-    # Standardized Format (when no specific info requested):
-        *[Experience Name]*
-        📍 *[Location]* | 🧭 *[Provider Type A/B]* | ⏱️ *[Duration]*
-        
-        *Código:* [Product Code] | *Edades:* [Age Range] | *Tipo:* [Private/Shared]
-        *Incluye:* [What's included]
-        *Idiomas:* [Languages] | *Disponibilidad:* [Days]
-        *Precios (MXN):* [Price breakdown by pax]
-
-    # Brief Format (when specific info requested):
-    Only show the requested information in a concise format.
-
-    # Price-Focused Format (when "barato/económico" mentioned):
-    Order by price (lowest first) and emphasize pricing:
-        *[Experience Name] - DESDE $[Price]*
-        📍 *[Location]* | *Código:* [Product Code] | ⏱️ *[Duration]*
-
-    # Contact/Banking Info (ONLY if specifically requested):
-        *Contacto Proveedor:* [Contact Info]
-        *Datos Bancarios:* [Banking Details]
-
-    4. If the employee asks a question related to lodging or transportation, transfer back to the triage agent. But when doubt use the tool to get the experience first to see if there is a match.
+    Respond with a concise summary of recommended experiences, highlighting key features like:
+    - Activity type and duration
+    - Location and difficulty level
+    - Price range
+    - Best time to visit
     """,
     model="gpt-4.1-mini-2025-04-14",
     tools=[get_experiences]
 )
 
 lodging_agent = Agent[UserInfoContext](
-    name="Lodging Agent",
-    handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about lodging from the knowledge base.",
+    name="LodgingAgent",
     instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
-    You are a lodging agent. If you are speaking to an employee, you probably were transferred from the triage agent. User can pass you provider name only, use the tool to get the lodging.
+    You are an expert in accommodations and lodging options.
+    Extract all accommodation-related requests from the user query.
+    Use the get_lodging tool to find relevant hotels, cabins, and other lodging options.
     
-    # Response Guidelines
-    - Provide BRIEF, FOCUSED responses based on specific user requirements
-    - Show ONLY the information requested by the user
-    - If no specific info is requested, use the standardized format below
-    - ALWAYS order results by price when "barato", "económico", or price-focused terms are mentioned
-    - Show ONLY providers with rating A or B, always indicate provider type
-    - HIDE contact data unless specifically requested
-    - Include age range, private/shared status, and product code
-    - Show banking data ONLY if specifically requested
-
-    # Routine
-    1. Ask for lodging type/location if user's query is unclear, or use tool directly if clear
-    2. Use get_lodging tool and format response according to user's specific request
-
-    # Standardized Format (when no specific info requested):
-        *[Hotel Name] - [Room Type]*
-        📍 *[Location]* | 🏨 *[Provider Type A/B]* | 💰 *[Price Range]*
-        
-        *Código:* [Product Code] | *Edades:* [Age Range] | *Tipo:* [Private/Shared]
-        *Incluye:* [Meals/Services]
-        *Disponibilidad:* [Days/Hours]
-
-    # Brief Format (when specific info requested):
-    Only show the requested information in a concise format.
-
-    # Price-Focused Format (when "barato/económico" mentioned):
-    Order by price (lowest first) and emphasize pricing:
-        *[Hotel Name] - DESDE $[Price]*
-        📍 *[Location]* | *Código:* [Product Code]
-
-    # Contact/Banking Info (ONLY if specifically requested):
-        *Contacto Proveedor:* [Contact Info]
-        *Datos Bancarios:* [Banking Details]
-
-    3. If the employee asks a question related to experiences or transportation, transfer back to the triage agent. But when doubt use the tool to get the lodging first to see if there is a match.""",
+    Respond with a concise summary of accommodation recommendations, highlighting:
+    - Type of accommodation (hotel, cabin, retreat)
+    - Location and proximity to attractions
+    - Amenities and facilities
+    - Price range and booking details
+    """,
     model="gpt-4.1-mini-2025-04-14",
     tools=[get_lodging]
 )
 
 transportation_agent = Agent[UserInfoContext](
-    name="Transportation Agent",
-    handoff_description="A helpful agent of a Rutopía travel agency that can answer questions about transportation from the knowledge base.",
+    name="TransportationAgent",
     instructions=f"""
-    {RECOMMENDED_PROMPT_PREFIX}
     {SLACK_FORMATTING}
-    You are a transportation agent of Rutopía travel agency. If you are speaking to an employee of Rutopía travel agency, you probably were transferred from the triage agent. User can pass you provider name only, use the tool to get the transportation.
+    You are an expert in transportation and travel logistics.
+    Extract all transportation-related requests from the user query.
+    Use the get_transportation tool to find relevant transfer options, routes, and transportation methods.
     
-    # Response Guidelines
-    - Provide BRIEF, FOCUSED responses based on specific user requirements
-    - Show ONLY the information requested by the user
-    - If no specific info is requested, use the standardized format below
-    - ALWAYS order results by price when "barato", "económico", or price-focused terms are mentioned
-    - Show ONLY providers with rating A or B, always indicate provider type
-    - HIDE contact data unless specifically requested
-    - Include age range, private/shared status, and product code
-    - Show banking data ONLY if specifically requested
-
-    # Routine
-    1. Ask for transportation type/route if user's query is unclear, or use tool directly if clear
-    2. Use get_transportation tool and format response according to user's specific request
-    3. If not exact match, offer alternative routes or transportation options
-
-    # Standardized Format (when no specific info requested):
-        *[Route/Transport Type]*
-        📍 *[Origin - Destination]* | 🚗 *[Provider Type A/B]* | 🕒 *[Duration]*
-        
-        *Código:* [Product Code] | *Edades:* [Age Range] | *Tipo:* [Private/Shared]
-        *Opciones:* [Vehicle options with capacity]
-        *Precios (MXN):* [Price by vehicle type]
-        *Disponibilidad:* [Days/Hours]
-
-    # Brief Format (when specific info requested):
-    Only show the requested information in a concise format.
-
-    # Price-Focused Format (when "barato/económico" mentioned):
-    Order by price (lowest first) and emphasize pricing:
-        *[Route] - DESDE $[Price]*
-        📍 *[Origin - Destination]* | *Código:* [Product Code] | 🕒 *[Duration]*
-
-    # Contact/Banking Info (ONLY if specifically requested):
-        *Contacto Proveedor:* [Contact Info]
-        *Datos Bancarios:* [Banking Details]
-
-    4. If the employee asks a question related to experiences or lodging, transfer back to the triage agent. But when doubt use the tool to get the transportation first to see if there is a match.
+    Respond with a concise summary of transportation options, highlighting:
+    - Route and distance
+    - Transportation method and duration
+    - Cost and availability
+    - Pickup/dropoff locations
     """,
     model="gpt-4.1-mini-2025-04-14",
     tools=[get_transportation]
 )
 
-router_agent = Agent[UserInfoContext](
-    name="Router Agent",
-    # input_guardrails=[trip_planning_guardrail],
-    handoff_description="A triage agent that can delegate a customer's request to the appropriate agent.",
-    instructions=(
-        f"{RECOMMENDED_PROMPT_PREFIX}"
-        f"{SLACK_FORMATTING}"
-        "You are a helpful routing agent named ProductoBot. You can use your tools to delegate questions to other appropriate agents."
-        "You are friendly, conversational, and helpful."
-    ),
-    handoffs=[
-        experiences_agent,
-        lodging_agent,
-        transportation_agent,
-    ],
+database_agent = Agent[UserInfoContext](
+    name="DatabaseAgent",
+    instructions=f"""
+    {SLACK_FORMATTING}
+    You are an expert in data queries and detailed lookups.
+    Extract specific data queries from the user (pricing, availability, detailed information).
+    Use the query_database_mcp tool for specific data requirements.
+    
+    Respond with precise data results including:
+    - Exact pricing and availability
+    - Detailed specifications
+    - Comparison data if requested
+    """,
+    model="gpt-4.1-mini-2025-04-14",
+    tools=[query_database_mcp]
 )
 
-experiences_agent.handoffs.append(router_agent)
-lodging_agent.handoffs.append(router_agent)
-transportation_agent.handoffs.append(router_agent)
+# Meta-agent that combines parallel results
+meta_agent = Agent[UserInfoContext](
+    name="MetaAgent",
+    instructions=f"""
+    {SLACK_FORMATTING}
+    You are ProductoBot's coordinator. You have received summaries from multiple specialized agents
+    covering experiences, lodging, transportation, and database queries.
+    
+    Your task:
+    1. Integrate all summaries into ONE coherent travel recommendation
+    2. Highlight connections between services (e.g., "nearby experiences from this hotel")
+    3. Group by priority/relevance to the user's request
+    4. Provide a clear, actionable summary
+    
+    Be concise, friendly, and professional. Use Slack markdown formatting.
+    """,
+    model="gpt-4.1-mini-2025-04-14"
+)
+
+# Create the parallel agent runner
+parallel_agents_list = [
+    (experiences_agent, "Experiences and activities"),
+    (lodging_agent, "Accommodation options"),
+    (transportation_agent, "Transportation logistics"),
+    (database_agent, "Specific data lookups")
+]
+
+parallel_runner = ParallelAgentRunner(meta_agent, parallel_agents_list)
+
+# Create the hybrid orchestrator
+query_analyzer = Agent(
+    name="QueryAnalyzer",
+    instructions="""Analyze travel queries to determine if they involve multiple domains.
+    Respond in JSON format with: should_parallelize (bool), domains (list), complexity (str)""",
+    model="gpt-4.1-mini-2025-04-14"
+)
+
+hybrid_orchestrator = HybridAgentOrchestrator(
+    single_agent=None,  # Will be set to productobot_agent later
+    query_analyzer=query_analyzer,
+    parallel_runner=parallel_runner
+)
+
+productobot_agent = Agent[UserInfoContext](
+    name="ProductoBot",
+    instructions=f"""
+    {RECOMMENDED_PROMPT_PREFIX}
+    {SLACK_FORMATTING}
+    You are ProductoBot, the primary travel assistant for Rutopía travel agency. 
+    You are a single, highly capable agent that uses a ReAct (Reasoning and Acting) approach to solve user requests.
+
+    # Your Core Responsibility
+    You must interpret every user request to determine what information is needed. You do not delegate to other agents; instead, you use your tools directly.
+    
+    # Interpretation Logic
+    - If the user asks about activities, tours, or things to do -> Use `get_experiences`.
+    - If the user asks about hotels, cabins, or where to stay -> Use `get_lodging`.
+    - If the user asks about routes, transfers, or how to get somewhere -> Use `get_transportation`.
+    - If the user asks for specific data, pricing, availability, or complex queries -> Use `query_database_mcp`.
+    - If the user asks about weather -> Use `get_city_weather`.
+    - If the user asks for general info (restaurants, city facts) not in the knowledge base -> Use `WebSearchTool`.
+
+    # ReAct Process
+    1. **Thought**: Analyze the user's request. What are they looking for? Which tool is best?
+    2. **Action**: Call the chosen tool with precise arguments.
+    3. **Observation**: Review the tool's output. Does it answer the user's question? Do you need more info?
+    4. **Final Answer**: Synthesize the information into a helpful, friendly response.
+
+    # Response Guidelines
+    - Provide BRIEF, FOCUSED responses.
+    - ALWAYS order results by price when "barato", "económico", or price-focused terms are mentioned.
+    - Show ONLY providers with rating A or B.
+    - HIDE contact/banking data unless specifically requested.
+    - Use the standardized formats for Experiences, Lodging, and Transportation.
+
+    If you cannot find an exact match, offer the closest alternatives and explain why.
+    Be conversational, friendly, and professional.
+    """,
+    model="gpt-4.1-mini-2025-04-14",
+    tools=[
+        get_experiences, 
+        get_lodging, 
+        get_transportation, 
+        query_database_mcp, 
+        get_city_weather, 
+        WebSearchTool()
+    ]
+)
 
 # Define custom hooks to show a wait message before tool execution
 class PreToolMessageHook(RunHooks):
@@ -344,22 +328,17 @@ class SlackMessageFormatter:
             return "Hola 👋, soy ProductoBot 🤖, estoy en desarrollo pero me puedes preguntar sobre viajes, destinos, alojamientos o experiencias" + response
         return response
 
-def extract_history_for_mcp(input_items):
-    """Extract conversation history in a format suitable for MCP context."""
-    history = []
-    # Skip the last item as it is the current query which is passed separately
-    for item in input_items[:-1]:
-        if isinstance(item, dict):
-            history.append(item)
-        elif isinstance(item, MessageOutputItem):
-            content = ItemHelpers.text_message_output(item)
-            if content:
-                history.append({"role": "assistant", "content": content})
-    return history
-
-async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on", first_name="Usuario"):
+async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on", first_name="Usuario", use_parallel=True):
     """
-    Process a user message and return a response.
+    Process a user message using either parallel or sequential execution.
+    
+    Args:
+        query: User's message
+        channel_id: Slack channel ID (optional)
+        thread_ts: Slack thread timestamp (optional)
+        chatbot_status: "on" or "off"
+        first_name: User's first name
+        use_parallel: Whether to enable parallel agent execution for multi-domain queries
     """
     try:
         logger.info(f"Processing message from {first_name} in channel {channel_id}, thread {thread_ts}")
@@ -375,115 +354,72 @@ async def chat(query: str, channel_id=None, thread_ts=None, chatbot_status="on",
             chatbot_status=chatbot_status,
         )
 
-        current_agent = router_agent
         input_items = conversation_history.get(conversation_id, {}).get("input_items", [])
         input_items.append({"content": query, "role": "user"})
 
         hooks = PreToolMessageHook()
-
-        # Try MCP first if configured; optionally enforce MCP-only mode
         response = ""
-        mcp_only = os.environ.get("MCP_ONLY", "false").lower() in ("1", "true", "yes")
-        mcp_url = os.environ.get("MCP_SERVER_URL")
-        
-        # Attempt MCP query first
-        if mcp_url:
-            try:
-                access_token = os.environ.get("SUPABASE_ACCESS_TOKEN")
-                # Extract history to provide context for follow-up questions
-                history = extract_history_for_mcp(input_items)
-                mcp_response = await mcp_query_nl_to_sql(query, access_token=access_token, history=history)
-                
-                # Check if MCP actually found something useful
-                # mcp_query_nl_to_sql now returns None if no results found
-                if mcp_response:
-                    response = mcp_response
-                else:
-                    logger.info("MCP returned None (no results), falling back to RAG agents")
-                    # Force fallback even if MCP_ONLY is set
-                    mcp_only = False
-            except MCPClientError as e:
-                logger.warning(f"MCP error: {e}; falling back to agents")
-                if mcp_only:
-                    return "Lo siento, el modo MCP-only está activado y hubo un error consultando MCP. Intenta de nuevo más tarde."
-        elif mcp_only:
-            return "El modo MCP-only está activado pero no hay MCP_SERVER_URL configurado."
 
-        logger.info(f"Debug: response='{response}', mcp_only={mcp_only}, chatbot_status='{chatbot_status}'")
-
-        if not response and not mcp_only:
-            if chatbot_status == "on":
-                # Loop to handle handoffs within the same turn
-                max_turns = 5
-                turns = 0
-                while turns < max_turns:
-                    logger.info(f"Running agent loop turn {turns+1} with agent {current_agent.name}")
-                    result = await Runner.run(current_agent, input_items, context=context, hooks=hooks)
-                    
-                    # Debug: Log what we got back
-                    logger.info(f"Runner returned {len(result.new_items)} new items")
-                    for i, item in enumerate(result.new_items):
-                        logger.info(f"Item {i}: type={type(item)}, content={item}")
-
-                    # Collect text responses and check if the last agent spoke
-                    last_agent_spoke = False
-                    for new_item in result.new_items:
-                        if isinstance(new_item, MessageOutputItem):
-                            text_content = ItemHelpers.text_message_output(new_item)
-                            if text_content:
-                                response += text_content + "\n"
-                            
-                            # Check if this message came from the agent that ended the run
-                            if hasattr(new_item, 'agent') and new_item.agent.name == result.last_agent.name:
-                                last_agent_spoke = True
-                    
-                    # Update history
-                    conversation_history[conversation_id] = {
-                        "input_items": result.to_input_list(),
-                        "current_agent": result.last_agent,
-                        "is_first_interaction": False,
-                    }
-                    
-                    # Check for handoff
-                    if result.last_agent.name != current_agent.name:
-                        logger.info(f"Handoff detected from {current_agent.name} to {result.last_agent.name}")
-                        
-                        # If the new agent already produced a message, we don't need to loop again
-                        if last_agent_spoke:
-                            logger.info(f"Agent {result.last_agent.name} already spoke in this turn. Breaking loop.")
-                            break
-                            
-                        current_agent = result.last_agent
-                        # Update input items for the next run in the loop
-                        input_items = conversation_history[conversation_id]["input_items"]
-                        turns += 1
-                    else:
-                        # No handoff, we are done for this turn
-                        logger.info(f"No handoff detected (agent remains {current_agent.name}), breaking loop")
-                        break
-                
-                # Fallback if response is still empty
-                if not response.strip():
-                    logger.warning("Agent produced empty response after execution")
-                    response = "Lo siento, no encontré información específica sobre eso. ¿Podrías intentar reformular tu pregunta?"
+        if chatbot_status == "on":
+            logger.info(f"Running agent: {productobot_agent.name}")
+            
+            # Determine execution strategy
+            if use_parallel:
+                logger.info("Attempting parallel execution via hybrid orchestrator")
+                try:
+                    # Update orchestrator with the main agent
+                    hybrid_orchestrator.single_agent = productobot_agent
+                    response = await hybrid_orchestrator.process(query, context)
+                except Exception as e:
+                    logger.warning(f"Parallel execution failed, falling back to sequential: {str(e)}")
+                    # Fallback to sequential
+                    result = await Runner.run(productobot_agent, input_items, context=context, hooks=hooks)
+                    response = await extract_response_text(result)
             else:
-                result = await Runner.run(router_agent, input_items, context=context)
-                response = ItemHelpers.text_message_output(result.new_items[-1]) if result.new_items else "I'm currently offline."
-                conversation_history[conversation_id] = {
-                    "input_items": result.to_input_list(),
-                    "current_agent": router_agent,
-                    "is_first_interaction": False,
-                }
+                logger.info("Using sequential execution")
+                result = await Runner.run(productobot_agent, input_items, context=context, hooks=hooks)
+                response = await extract_response_text(result)
+            
+            # Update history
+            conversation_history[conversation_id] = {
+                "input_items": input_items,
+                "current_agent": productobot_agent,
+                "is_first_interaction": False,
+            }
+            
+            # Fallback if response is still empty
+            if not response.strip():
+                logger.warning("Agent produced empty response after execution")
+                response = "Lo siento, no encontré información específica sobre eso. ¿Podrías intentar reformular tu pregunta?"
+        else:
+            logger.info("Chatbot is off - returning limited response")
+            response = "Lo siento, estoy fuera de servicio en este momento. Por favor intenta más tarde."
+            conversation_history[conversation_id] = {
+                "input_items": input_items,
+                "current_agent": productobot_agent,
+                "is_first_interaction": False,
+            }
 
         formatted_response = SlackMessageFormatter.format_response(response.strip(), context)
         logger.info(f"Generated response for {conversation_id}")
         return formatted_response
-    except InputGuardrailTripwireTriggered:
-        error_msg = "Lo siento, solo puedo ayudar con preguntas relacionadas con la planificación de viajes. Por favor, pregunta sobre viajes, destinos, alojamientos o experiencias."
-        return SlackMessageFormatter.format_response(error_msg, context)
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}", exc_info=True)
         return "Lo siento, tuve un problema procesando tu mensaje. Por favor, intenta de nuevo más tarde."
+
+
+async def extract_response_text(result) -> str:
+    """Helper to extract text from agent result"""
+    response = ""
+    if hasattr(result, 'new_items'):
+        for new_item in result.new_items:
+            if isinstance(new_item, MessageOutputItem):
+                text_content = ItemHelpers.text_message_output(new_item)
+                if text_content:
+                    response += text_content + "\n"
+    if not response and hasattr(result, 'final_output'):
+        response = result.final_output
+    return response
 
 async def main():
     # Simple CLI interface for testing
